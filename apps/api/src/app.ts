@@ -14,6 +14,7 @@ import { scenarioSamples, scenarios, type Scenario } from './features/simulator/
 import type { RiskAssessment } from '@anmai/contracts';
 import { AnmaiAgent } from './features/agent/anmai-agent.js';
 import { EventBus, type BusEvent } from './infra/event-bus.js';
+import { BaselineExclusionRepository } from './infra/repositories/baseline-exclusion-repository.js';
 
 export interface AppDependencies { db: DatabaseContext; clock: Clock; baselineProvider?: BaselineModelProvider; baselineProviderName?: string }
 
@@ -26,6 +27,7 @@ export function buildApp({ db, clock, baselineProvider = new FakeBaselineProvide
   const agent = new AnmaiAgent(detector, emergency);
   const latestRisk = new Map<string, RiskAssessment>();
   const bus = new EventBus();
+  const exclusions = new BaselineExclusionRepository(db);
 
   function snapshot(wearerId: string) {
     return { wearerId, risk: latestRisk.get(wearerId) ?? null, event: emergency.getActiveForWearer(wearerId), confirmedMonitor: emergency.getMonitorState(wearerId), baseline: baseline.getActive(wearerId), baselineState: baseline.getState(wearerId), provider: baselineProviderName };
@@ -38,6 +40,10 @@ export function buildApp({ db, clock, baselineProvider = new FakeBaselineProvide
     const activeBaseline = baseline.getActive(wearerId);
     const run = await agent.handle({ kind: 'vitals', wearerId, samples, baselineVersion: activeBaseline?.version ?? null, ...(activeBaseline ? { baseline: activeBaseline.baseline as PersonalBaseline } : {}) });
     const risk = run.risk!;
+    if ((risk.level === 'abnormal' || risk.level === 'worsening') && samples.length > 0) {
+      const timestamps = samples.map(sample => new Date(sample.timestamp).toISOString()).sort();
+      exclusions.excludeRange(wearerId, timestamps[0]!, timestamps[timestamps.length - 1]!, `risk_${risk.level}`);
+    }
     latestRisk.set(wearerId, risk);
     bus.publish('monitoring', { wearerId, risk, event: run.event });
     return { risk, event: run.event, trace: run.trace };

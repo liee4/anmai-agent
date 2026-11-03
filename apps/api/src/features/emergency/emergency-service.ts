@@ -6,6 +6,7 @@ import { DeadlineRepository } from '../../infra/repositories/deadline-repository
 import { EmergencyRepository } from '../../infra/repositories/emergency-repository.js';
 import { createEvent, reduceEmergencyState, type EmergencyCommand } from './state-machine.js';
 import type { PersonalBaseline } from '../monitoring/risk-detector.js';
+import { BaselineExclusionRepository } from '../../infra/repositories/baseline-exclusion-repository.js';
 
 export const defaultTimerSettings: TimerSettings = { wearerResponseSeconds: 60, primaryRelativeSeconds: 30, otherRelativesSeconds: 30, safeRecheckSeconds: 300 };
 
@@ -105,6 +106,7 @@ export class EmergencyService {
       this.recordSimulation(current, result.event, command);
       if (command.kind === 'wearer_unwell') {
         this.db.raw.prepare("INSERT INTO baseline_state(wearer_id, status, paused_at, pause_reason) VALUES (?, 'paused', ?, 'wearer_unwell') ON CONFLICT(wearer_id) DO UPDATE SET status = 'paused', paused_at = excluded.paused_at, pause_reason = excluded.pause_reason").run(current.wearerId, this.clock.now().toISOString());
+        new BaselineExclusionRepository(this.db).excludeRange(current.wearerId, current.createdAt, this.clock.now().toISOString(), 'wearer_unwell');
       }
       if (command.kind === 'wearer_safe') {
         const recheckAt = new Date(this.clock.now().getTime() + current.timerSettings.safeRecheckSeconds * 1000).toISOString();

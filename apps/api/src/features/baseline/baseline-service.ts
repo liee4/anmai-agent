@@ -9,6 +9,7 @@ import { generateBaseline } from './baseline-generation-module.js';
 import { blendThresholdEvidence, evidenceWeights } from './memory-assembler.js';
 import { buildObservationBaseline, type BaselineReading } from './observation-baseline.js';
 import { assembleLongTermMemory } from './long-term-summary.js';
+import { BaselineExclusionRepository } from '../../infra/repositories/baseline-exclusion-repository.js';
 
 export interface PublishedBaseline {
   [key: string]: unknown;
@@ -44,10 +45,12 @@ function allowedRanges(observations: ObservationBaseline[]): Record<string, [num
 export class BaselineService {
   private readonly baselines: BaselineRepository;
   private readonly summaries: DailySummaryRepository;
+  private readonly exclusions: BaselineExclusionRepository;
 
   constructor(private readonly db: DatabaseContext, private readonly provider: BaselineModelProvider, private readonly providerName = 'fake') {
     this.baselines = new BaselineRepository(db);
     this.summaries = new DailySummaryRepository(db);
+    this.exclusions = new BaselineExclusionRepository(db);
   }
 
   getActive(wearerId: string): StoredBaseline | null { return this.baselines.getActive(wearerId); }
@@ -80,11 +83,13 @@ export class BaselineService {
   }
 
   private async generateCycle(cycle: BaselineCycle): Promise<number> {
+    const exclusionRevision = this.exclusions.revision(cycle.wearerId);
     const { request, contributors } = this.makeRequest(cycle);
     if (request.observations.length === 0 || Object.keys(request.allowedRanges).length === 0) return 0;
     const prior = this.getActive(cycle.wearerId);
     const priorValues = (prior?.baseline as Partial<PublishedBaseline> | undefined)?.values ?? {};
     const result = await generateBaseline(request, this.provider, priorValues);
+    if (this.exclusions.revision(cycle.wearerId) !== exclusionRevision) return 0;
     const publishedAt = new Date().toISOString();
     this.db.transaction(() => {
       for (const attempt of result.attempts) {
@@ -97,7 +102,7 @@ export class BaselineService {
         return;
       }
       const baseline: PublishedBaseline = { observations: request.observations, values: result.values, evidenceWeights: evidenceWeights(request.recentBaselines.length, request.longTermSummary !== null), attempts: result.attempts, provider: this.providerName, longTermSummary: result.longTermSummary, longTermContributors: contributors };
-      this.baselines.publish({ wearerId: cycle.wearerId, version: (prior?.version ?? 0) + 1, cycleId: cycle.id, publishedAt, baseline });
+      this.baselines.publish({ wearerId: cycle.wearerId, version: this.baselines.nextVersion(cycle.wearerId), cycleId: cycle.id, publishedAt, baseline });
     });
     return result.attempts.length;
   }
