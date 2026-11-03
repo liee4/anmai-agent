@@ -14,4 +14,3 @@ export const ExclusionReasonSchema = Type.Union([
 export type ExclusionReason = Static<typeof ExclusionReasonSchema>;
 export const ToolResultStatusSchema = Type.Union([Type.Literal('success'), Type.Literal('rejected'), Type.Literal('failed')]);
 export type ToolResultStatus = Static<typeof ToolResultStatusSchema>;
-

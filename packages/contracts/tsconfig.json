@@ -3,4 +3,3 @@
   "compilerOptions": { "noEmit": true, "types": ["vitest/globals"] },
   "include": ["src/**/*.ts"]
 }
-

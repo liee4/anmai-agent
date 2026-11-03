@@ -18,4 +18,3 @@ export class DailySummaryRepository {
     return rows.map(row => JSON.parse(row.summary_json) as DailySummary);
   }
 }
-

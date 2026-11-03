@@ -40,4 +40,3 @@ export function openDatabase(path: string): DatabaseContext {
     close: () => raw.close(),
   };
 }
-

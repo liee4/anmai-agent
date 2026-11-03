@@ -1,0 +1,1 @@
+export const demoThresholds = Object.freeze({ heartRateUpper: 120, heartRateLower: 50, spo2Lower: 92, systolicBPUpper: 180, systolicBPLower: 90, windowSeconds: 10, persistenceSeconds: 30, abnormalSeconds: 24, endingConsecutiveSeconds: 5, demoOnly: true });

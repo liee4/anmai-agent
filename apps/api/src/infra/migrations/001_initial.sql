@@ -25,6 +25,13 @@ CREATE TABLE IF NOT EXISTS minute_vitals (
   PRIMARY KEY (wearer_id, minute_at, context)
 );
 
+CREATE TABLE IF NOT EXISTS ingested_samples (
+  wearer_id TEXT NOT NULL,
+  sampled_at TEXT NOT NULL,
+  sample_json TEXT NOT NULL,
+  PRIMARY KEY (wearer_id, sampled_at)
+);
+
 CREATE TABLE IF NOT EXISTS daily_summaries (
   wearer_id TEXT NOT NULL,
   date TEXT NOT NULL,
@@ -98,4 +105,4 @@ CREATE TABLE IF NOT EXISTS deadlines (
 
 CREATE INDEX IF NOT EXISTS idx_deadlines_due ON deadlines(status, due_at);
 CREATE INDEX IF NOT EXISTS idx_events_active ON emergency_events(wearer_id, closed_at);
-
+CREATE UNIQUE INDEX IF NOT EXISTS idx_one_active_event_per_wearer ON emergency_events(wearer_id) WHERE closed_at IS NULL;

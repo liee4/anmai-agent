@@ -45,4 +45,3 @@ describe('SQLite persistence', () => {
     db.close();
   });
 });
-

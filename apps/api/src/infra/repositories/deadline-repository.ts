@@ -22,4 +22,3 @@ export class DeadlineRepository {
     this.db.raw.prepare("UPDATE deadlines SET status = 'cancelled' WHERE event_id = ? AND status = 'pending'").run(eventId);
   }
 }
-

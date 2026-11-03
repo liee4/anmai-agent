@@ -32,4 +32,3 @@ export function parseIngestRequest(input: unknown): IngestRequest {
   }
   return input;
 }
-

@@ -34,4 +34,3 @@ describe('ingest contract', () => {
     expect(() => parseIngestRequest({ inputMode: 'auto', wearerId: 'wearer-001', data: [{ ...sample('2026-10-28T10:30:05+08:00'), diagnosis: 'healthy' }] })).toThrow(/Unexpected property/);
   });
 });
-

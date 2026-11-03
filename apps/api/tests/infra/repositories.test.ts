@@ -44,5 +44,14 @@ describe('repositories', () => {
     expect(baselines.getActive('wearer-1')).toMatchObject({ version: 1, baseline: { resting: { heartRateWarningUpper: 108 } } });
     db.close();
   });
+  it('purges replaced baseline values after their 12-month retention date', () => {
+    const db = openDatabase(':memory:');
+    const baselines = new BaselineRepository(db);
+    baselines.publish({ wearerId: 'w', version: 1, cycleId: 'c1', publishedAt: '2025-01-01T00:00:00Z', baseline: { values: { upper: 105 } } });
+    baselines.publish({ wearerId: 'w', version: 2, cycleId: 'c2', publishedAt: '2025-02-01T00:00:00Z', baseline: { values: { upper: 106 }, longTermSummary: '来自旧版的规律', longTermContributors: [1] } });
+    expect(baselines.purgeExpired('2026-02-02T00:00:00Z')).toBe(1);
+    expect(baselines.getActive('w')?.baseline).toEqual({ values: { upper: 106 }, longTermSummary: null, longTermContributors: [] });
+    expect((db.raw.prepare('SELECT baseline_json, purged_at FROM baseline_versions WHERE wearer_id = ? AND version = 1').get('w') as { baseline_json: string; purged_at: string | null })).toMatchObject({ baseline_json: '{}' });
+    db.close();
+  });
 });
-

@@ -14,6 +14,5 @@ export const TimerSettingsSchema = Type.Object({ wearerResponseSeconds: Type.Int
 export type TimerSettings = Static<typeof TimerSettingsSchema>;
 export const TimelineEntrySchema = Type.Object({ id: Type.String(), eventId: Type.String(), at: TimestampSchema, kind: Type.String(), detail: Type.String() }, { additionalProperties: false });
 export type TimelineEntry = Static<typeof TimelineEntrySchema>;
-export const EmergencyEventSchema = Type.Object({ eventId: Type.String(), wearerId: Type.String(), state: EventStateSchema, stateVersion: Type.Integer({ minimum: 1 }), createdAt: TimestampSchema, deadlineAt: Type.Union([TimestampSchema, Type.Null()]), timerSettings: TimerSettingsSchema, baselineVersion: Type.Union([Type.Integer({ minimum: 1 }), Type.Null()]), location: Type.Union([LocationSchema, Type.Null()]), risk: RiskAssessmentSchema }, { additionalProperties: false });
+export const EmergencyEventSchema = Type.Object({ eventId: Type.String(), wearerId: Type.String(), state: EventStateSchema, stateVersion: Type.Integer({ minimum: 1 }), createdAt: TimestampSchema, deadlineAt: Type.Union([TimestampSchema, Type.Null()]), timerSettings: TimerSettingsSchema, baselineVersion: Type.Union([Type.Integer({ minimum: 1 }), Type.Null()]), baselineSnapshot: Type.Optional(Type.Any()), location: Type.Union([LocationSchema, Type.Null()]), risk: RiskAssessmentSchema }, { additionalProperties: false });
 export type EmergencyEvent = Static<typeof EmergencyEventSchema>;
-

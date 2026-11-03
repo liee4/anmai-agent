@@ -3,11 +3,11 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "scripts": { "test": "vitest run", "typecheck": "tsc --noEmit" },
+  "scripts": { "dev": "pnpm start", "build": "tsc -p tsconfig.build.json", "start": "pnpm --dir ../.. build:contracts && pnpm build && node dist/main.js", "test": "vitest run", "typecheck": "tsc --noEmit" },
   "dependencies": {
     "@anmai/contracts": "workspace:*",
+    "@sinclair/typebox": "^0.34.0",
     "fastify": "^5.0.0"
   },
   "devDependencies": { "@types/node": "^24.0.0" }
 }
-

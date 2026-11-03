@@ -760,4 +760,3 @@ Record commands, test counts, build output, screenshots and any intentionally de
 Ruling: 新建私有 GitHub 仓库后，本地 `git push` 受 `SEC_E_NO_CREDENTIALS` 阻断；已连接的 GitHub 接口能写入同一目标仓库，因此使用 Git Data API 构建单次远端提交。代价是本地与远端初始提交历史不一致，后续需用该接口持续同步，或在命令行凭据修复后先协调两条历史。
 
 Task 2 Ruling: `better-sqlite3` 安装时原生模块构建因缺少 Python 失败，预编译缓存目录被拒绝写入。改用 Node 24 内置 `node:sqlite`，保持 SQLite 文件、WAL、事务和 Repository 接口；代价是内置模块在 Node 24 仍标为实验性，未来部署前需固定 Node 小版本并复测。
-

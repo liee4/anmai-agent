@@ -17,6 +17,11 @@ export class EmergencyRepository {
     return row ? JSON.parse(row.event_json) as EmergencyEvent : null;
   }
 
+  getActiveForWearer(wearerId: string): EmergencyEvent | null {
+    const row = this.db.raw.prepare('SELECT event_json FROM emergency_events WHERE wearer_id = ? AND closed_at IS NULL ORDER BY created_at DESC LIMIT 1').get(wearerId) as { event_json: string } | undefined;
+    return row ? JSON.parse(row.event_json) as EmergencyEvent : null;
+  }
+
   transition(eventId: string, expectedVersion: number, nextState: EventState, deadlineAt: string | null): TransitionResult {
     const current = this.get(eventId);
     if (!current || current.stateVersion !== expectedVersion) return { ok: false, event: current };
@@ -27,4 +32,3 @@ export class EmergencyRepository {
     return result.changes === 1 ? { ok: true, event } : { ok: false, event: this.get(eventId) };
   }
 }
-

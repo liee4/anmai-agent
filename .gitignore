@@ -2,8 +2,9 @@ node_modules/
 dist/
 .env
 data/*.sqlite*
+apps/api/data/
+.taste-skill/
 .superpowers/
 coverage/
 test-results/
 playwright-report/
-
