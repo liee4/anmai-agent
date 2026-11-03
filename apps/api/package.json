@@ -1,0 +1,13 @@
+{
+  "name": "@anmai/api",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": { "test": "vitest run", "typecheck": "tsc --noEmit" },
+  "dependencies": {
+    "@anmai/contracts": "workspace:*",
+    "fastify": "^5.0.0"
+  },
+  "devDependencies": { "@types/node": "^24.0.0" }
+}
+

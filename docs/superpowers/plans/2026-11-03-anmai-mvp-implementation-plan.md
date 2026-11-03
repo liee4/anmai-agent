@@ -6,7 +6,7 @@
 
 **Architecture:** 使用 pnpm workspace 管理 Web、API 和共享契约三个包。API 以确定性领域模块为核心，通过 SQLite Repository、模型 Provider、工具注册表和受约束 Agent Loop 组合流程；React 单页只调用公开 API，并通过 SSE 接收实时状态。DeepSeek 只生成基线候选和说明文本，安全阈值、异常判断、计时器及应急状态转换全部由代码控制。
 
-**Tech Stack:** Node.js 24 LTS、pnpm 11、TypeScript、React 19、Vite 8、Fastify 5、TypeBox、better-sqlite3、Vitest、Testing Library、Playwright、SSE、浏览器 Web Speech API、DeepSeek Responses/JSON API。
+**Tech Stack:** Node.js 24 LTS、pnpm 11、TypeScript、React 19、Vite 8、Fastify 5、TypeBox、Node 内置 `node:sqlite`、Vitest、Testing Library、Playwright、SSE、浏览器 Web Speech API、DeepSeek Responses/JSON API。
 
 **Spec:** `../../../../outputs/安脉-Agent-设计方案.md`
 
@@ -25,7 +25,7 @@
 - 第一版所有电话、短信和急救行为均为模拟，不连接真实服务。
 - 不在普通界面提供模型 Provider 切换入口；通过后端环境变量选择。
 - 代码优先可读性：文件保持单一职责，领域逻辑不得写入路由或 React 组件。
-- 当前目录不是 Git 仓库；各任务以测试通过和检查点记录代替 commit，除非用户之后明确初始化 Git。
+- 用户已授权建立独立私有仓库 `liee4/anmai`；本地 `anmai` 已初始化 Git。当前环境命令行推送遇到 Windows TLS 凭据错误，远端文件由已连接的 GitHub 接口提交，并逐项核验。
 
 ## Reference Code Style Applied
 
@@ -206,7 +206,7 @@ Expected: FAIL because database modules do not exist.
 
 - [ ] **Step 3: Implement the database boundary**
 
-Use `better-sqlite3`, WAL mode, foreign keys, prepared statements and explicit transactions. Keep raw SQL inside repositories and migrations only.
+Use Node 内置 `node:sqlite`, WAL mode, foreign keys, prepared statements and explicit transactions. Keep raw SQL inside repositories and migrations only.
 
 - [ ] **Step 4: Create initial schema**
 
@@ -755,5 +755,9 @@ Record commands, test counts, build output, screenshots and any intentionally de
 
 ## Execution Log
 
-Implementation has not started. Add one line per completed task containing date, task number, verification command and result.
+2026-11-03 Task 1 PASS：`pnpm test`（5/5）、`pnpm typecheck`（零错误）。本地提交 `5fc6400`；远端提交 `d131e87`，已核验 `main` 和 `vitals.ts` 内容。
+
+Ruling: 新建私有 GitHub 仓库后，本地 `git push` 受 `SEC_E_NO_CREDENTIALS` 阻断；已连接的 GitHub 接口能写入同一目标仓库，因此使用 Git Data API 构建单次远端提交。代价是本地与远端初始提交历史不一致，后续需用该接口持续同步，或在命令行凭据修复后先协调两条历史。
+
+Task 2 Ruling: `better-sqlite3` 安装时原生模块构建因缺少 Python 失败，预编译缓存目录被拒绝写入。改用 Node 24 内置 `node:sqlite`，保持 SQLite 文件、WAL、事务和 Repository 接口；代价是内置模块在 Node 24 仍标为实验性，未来部署前需固定 Node 小版本并复测。
 
