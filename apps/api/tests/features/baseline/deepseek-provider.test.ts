@@ -8,10 +8,12 @@ const output = { baselineCandidate: { contexts: { resting: {}, activity: {}, nig
 describe('DeepSeek provider boundary', () => {
   it('parses a structured candidate without database access', async () => {
     const calls: string[] = [];
-    const fakeFetch = async (url: string) => { calls.push(url); return { ok: true, json: async () => ({ choices: [{ message: { content: JSON.stringify(output) } }] }) } as Response; };
+    let sentBody: { messages: { content: string }[] } | null = null;
+    const fakeFetch = async (url: string, options: RequestInit) => { calls.push(url); sentBody = JSON.parse(options.body as string); return { ok: true, json: async () => ({ choices: [{ message: { content: JSON.stringify(output) } }] }) } as Response; };
     const provider = new DeepSeekBaselineProvider({ apiKey: 'test-key', baseUrl: 'https://api.deepseek.com', model: 'deepseek-flash', fetcher: fakeFetch as typeof fetch });
     expect(await provider.generateCandidate(request)).toEqual(output);
     expect(calls).toEqual(['https://api.deepseek.com/chat/completions']);
+    expect(JSON.parse(sentBody!.messages[1]!.content)).toMatchObject({ request: { cycleId: 'cycle-1' }, outputSchema: { type: 'object' } });
   });
 
   it('rejects blank content instead of publishing it', async () => {

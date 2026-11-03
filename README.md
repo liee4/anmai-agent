@@ -24,11 +24,13 @@ pnpm dev
 
 ```powershell
 $env:BASELINE_PROVIDER='deepseek'
-$env:DEEPSEEK_API_KEY='你的密钥'
+$env:DEEPSEEK_API_KEY = Read-Host '请输入 DeepSeek API Key'
+$env:DATABASE_PATH='data/deepseek-demo.sqlite'
 pnpm dev
 ```
 
 可通过 `DEEPSEEK_BASE_URL` 和 `DEEPSEEK_MODEL` 覆盖接口地址和模型名。密钥只留在本机环境变量，不要写进仓库。模型调用失败时，既有基线仍可用于检测；新软阈值不会绕过校验器发布。
+现场接入步骤见 [演示操作](docs/demo-runbook.md)。
 
 ## 演示流程
 

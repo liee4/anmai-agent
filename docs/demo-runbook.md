@@ -4,6 +4,17 @@
 
 在 `anmai` 目录运行 `pnpm install`、`pnpm verify`、`pnpm dev`。打开 `http://127.0.0.1:5173`。默认使用离线 Fake Provider，能稳定演示完整流程。需要真实 DeepSeek 生成时，先在 API 进程环境设置 `BASELINE_PROVIDER=deepseek` 和 `DEEPSEEK_API_KEY`；不要把密钥放进演示页面或仓库。
 
+现场展示真实 DeepSeek 调用时，在**新的 PowerShell 窗口**进入 `anmai`，执行：
+
+```powershell
+$env:BASELINE_PROVIDER = 'deepseek'
+$env:DEEPSEEK_API_KEY = Read-Host '请输入 DeepSeek API Key'
+$env:DATABASE_PATH = 'data/deepseek-demo.sqlite'
+pnpm dev
+```
+
+密钥仅存在于该终端启动的进程环境中。`DATABASE_PATH` 使用新的本地文件，是为了避免先前演示已处理过相同的 14 天周期而跳过模型调用。首次导入后，界面应显示 Provider 为 `deepseek` 且基线版本为 `v1`；这表示本次使用配置的密钥取得了通过校验的模型结果。若仍无基线版本，说明模型请求或候选校验未成功；不要声称演示已生成基线。演示前请用自己的密钥完整试跑一次，API 用量由 DeepSeek 账户计费。
+
 ## 场景一：基线
 
 点击“填入 14 天演示数据”与“导入并检查基线”。观察历史模式、14 天覆盖、有效日、完整周期和基线版本。个人基线卡显示本地统计的观察值与 Provider 名。再次导入同一批数据不会重复生成版本。

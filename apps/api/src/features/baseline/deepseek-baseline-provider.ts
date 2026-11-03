@@ -23,8 +23,13 @@ export class DeepSeekBaselineProvider implements BaselineModelProvider {
         temperature: 0,
         response_format: { type: 'json_object' },
         messages: [
-          { role: 'system', content: '你是个人健康基线候选生成器。只返回 JSON。不得修改观察统计、固定安全边界或应急逻辑。' },
-          { role: 'user', content: JSON.stringify({ request, correction, outputSchema: 'baselineCandidate: {contexts: {resting, activity, night}, confidence, observations, evidenceRefs}; updatedLongTermSummaryCandidate: string|null' }) },
+          { role: 'system', content: '你是个人健康基线候选生成器。只返回符合给定 JSON Schema 的 JSON 对象，不要 Markdown。不得修改观察统计、固定安全边界或应急逻辑。' },
+          { role: 'user', content: JSON.stringify({
+            task: '根据观察基线和加权历史证据，为 allowedRanges 中每个场景.字段生成一个数值候选。候选必须位于对应闭区间内。contexts 必须包含 resting、activity、night 三个对象；证据不足的场景使用空对象。evidenceRefs 只能从 request.evidenceRefs 选取，至少包含当前 cycleId。observations 只写简短、可由证据支持的个人规律。updatedLongTermSummaryCandidate 为不超过 800 字的规律摘要；无可更新内容时填 null。若提供 correction，只修改 rejectedFields；已通过的 lockedFields 不要再输出。不要输出未在 Schema 中定义的字段。',
+            request,
+            correction: correction ?? null,
+            outputSchema: BaselineCandidateSchema,
+          }) },
         ],
       }),
     });
