@@ -17,7 +17,7 @@ export interface Dashboard {
 }
 
 async function json<T>(path: string, options?: RequestInit): Promise<T> {
-  const response = await fetch(path, { ...options, headers: { 'Content-Type': 'application/json', ...options?.headers } });
+  const response = await fetch(path, { ...options, headers: { ...(options?.body == null ? {} : { 'Content-Type': 'application/json' }), ...options?.headers } });
   const body = await response.json() as T & { message?: string };
   if (!response.ok) throw new Error(body.message ?? `HTTP ${response.status}`);
   return body;
