@@ -1,0 +1,16 @@
+{
+  "name": "anmai",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@11.25.0",
+  "engines": { "node": ">=24" },
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit -p packages/contracts/tsconfig.json"
+  },
+  "devDependencies": {
+    "typescript": "^6.0.0",
+    "vitest": "^4.0.0"
+  }
+}
+

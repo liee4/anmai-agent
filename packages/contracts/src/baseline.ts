@@ -1,0 +1,12 @@
+import { Type, type Static } from '@sinclair/typebox';
+import { ContextSchema, TimestampSchema } from './common.js';
+
+export const StatisticSchema = Type.Object({ median: Type.Number(), p10: Type.Number(), p90: Type.Number(), mad: Type.Number({ minimum: 0 }), sampleCount: Type.Integer({ minimum: 0 }) }, { additionalProperties: false });
+export const ObservationBaselineSchema = Type.Object({ context: ContextSchema, hours: Type.Number({ minimum: 0 }), heartRate: Type.Optional(StatisticSchema), spo2: Type.Optional(StatisticSchema), systolicBP: Type.Optional(StatisticSchema), diastolicBP: Type.Optional(StatisticSchema) }, { additionalProperties: false });
+export type ObservationBaseline = Static<typeof ObservationBaselineSchema>;
+export const SoftThresholdSchema = Type.Object({ heartRateWarningUpper: Type.Optional(Type.Number()), heartRateWarningLower: Type.Optional(Type.Number()), spo2WarningLower: Type.Optional(Type.Number()), systolicBPWarningUpper: Type.Optional(Type.Number()), diastolicBPWarningUpper: Type.Optional(Type.Number()) }, { additionalProperties: false });
+export const BaselineCandidateSchema = Type.Object({ baselineCandidate: Type.Object({ contexts: Type.Object({ resting: SoftThresholdSchema, activity: SoftThresholdSchema, night: SoftThresholdSchema }, { additionalProperties: false }), confidence: Type.Union([Type.Literal('low'), Type.Literal('medium'), Type.Literal('high')]), observations: Type.Array(Type.String()), evidenceRefs: Type.Array(Type.String()) }, { additionalProperties: false }), updatedLongTermSummaryCandidate: Type.Union([Type.String(), Type.Null()]) }, { additionalProperties: false });
+export type BaselineCandidate = Static<typeof BaselineCandidateSchema>;
+export const BaselineGenerationRequestSchema = Type.Object({ wearerId: Type.String(), cycleId: Type.String(), cycleStart: TimestampSchema, cycleEnd: TimestampSchema, validDays: Type.Integer({ minimum: 7 }), observations: Type.Array(ObservationBaselineSchema), recentBaselines: Type.Array(Type.Unknown(), { maxItems: 4 }), longTermSummary: Type.Union([Type.String(), Type.Null()]), evidenceWeights: Type.Object({ current: Type.Number(), recent: Type.Number(), longTerm: Type.Number() }, { additionalProperties: false }), allowedRanges: Type.Record(Type.String(), Type.Tuple([Type.Number(), Type.Number()])), evidenceRefs: Type.Array(Type.String()) }, { additionalProperties: false });
+export type BaselineGenerationRequest = Static<typeof BaselineGenerationRequestSchema>;
+
