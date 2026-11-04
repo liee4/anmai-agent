@@ -46,6 +46,7 @@ export class BaselineService {
   private readonly baselines: BaselineRepository;
   private readonly summaries: DailySummaryRepository;
   private readonly exclusions: BaselineExclusionRepository;
+  private readonly resetEpochs = new Map<string, number>();
 
   constructor(private readonly db: DatabaseContext, private readonly provider: BaselineModelProvider, private readonly providerName = 'fake') {
     this.baselines = new BaselineRepository(db);
@@ -67,13 +68,21 @@ export class BaselineService {
     return true;
   }
 
+  cancelPending(wearerId: string): void {
+    this.resetEpochs.set(wearerId, (this.resetEpochs.get(wearerId) ?? 0) + 1);
+  }
+
   async generatePending(wearerId: string): Promise<{ completedCycles: number; modelCalls: number; baselineVersion: number | null }> {
+    const epoch = this.resetEpochs.get(wearerId) ?? 0;
     this.baselines.purgeExpired(new Date().toISOString());
     const cycles = buildCycles(this.summaries.list(wearerId)).filter(cycle => cycle.eligible);
     let modelCalls = 0;
     if (this.getState(wearerId).status !== 'paused') {
       const pending = cycles.filter(cycle => !this.wasProcessed(wearerId, cycle.id)).slice(-4);
-      for (const cycle of pending) modelCalls += await this.generateCycle(cycle);
+      for (const cycle of pending) {
+        if ((this.resetEpochs.get(wearerId) ?? 0) !== epoch) break;
+        modelCalls += await this.generateCycle(cycle, epoch);
+      }
     }
     return { completedCycles: cycles.length, modelCalls, baselineVersion: this.getActive(wearerId)?.version ?? null };
   }
@@ -82,13 +91,14 @@ export class BaselineService {
     return Boolean(this.db.raw.prepare('SELECT 1 FROM baseline_versions WHERE wearer_id = ? AND cycle_id = ? UNION ALL SELECT 1 FROM baseline_attempts WHERE wearer_id = ? AND cycle_id = ? LIMIT 1').get(wearerId, cycleId, wearerId, cycleId));
   }
 
-  private async generateCycle(cycle: BaselineCycle): Promise<number> {
+  private async generateCycle(cycle: BaselineCycle, epoch: number): Promise<number> {
     const exclusionRevision = this.exclusions.revision(cycle.wearerId);
     const { request, contributors } = this.makeRequest(cycle);
     if (request.observations.length === 0 || Object.keys(request.allowedRanges).length === 0) return 0;
     const prior = this.getActive(cycle.wearerId);
     const priorValues = (prior?.baseline as Partial<PublishedBaseline> | undefined)?.values ?? {};
     const result = await generateBaseline(request, this.provider, priorValues);
+    if ((this.resetEpochs.get(cycle.wearerId) ?? 0) !== epoch) return 0;
     if (this.exclusions.revision(cycle.wearerId) !== exclusionRevision) return 0;
     const publishedAt = new Date().toISOString();
     this.db.transaction(() => {

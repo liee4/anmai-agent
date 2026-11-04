@@ -17,6 +17,7 @@ import { EventBus, type BusEvent } from './infra/event-bus.js';
 import { BaselineExclusionRepository } from './infra/repositories/baseline-exclusion-repository.js';
 import { DailySummaryRepository } from './infra/repositories/daily-summary-repository.js';
 import { nextDemoHistory } from './features/simulator/demo-history.js';
+import { resetDemoWearer } from './features/simulator/demo-reset.js';
 
 export interface AppDependencies { db: DatabaseContext; clock: Clock; baselineProvider?: BaselineModelProvider; baselineProviderName?: string }
 
@@ -86,6 +87,17 @@ export function buildApp({ db, clock, baselineProvider = new FakeBaselineProvide
     const body = request.body as { wearerId?: string; samples?: VitalSample[] };
     if (!body || typeof body.wearerId !== 'string' || !Array.isArray(body.samples)) return reply.code(400).send({ code: 'INVALID_MONITOR_INPUT', message: 'wearerId and samples are required' });
     return evaluate(body.wearerId, body.samples);
+  });
+  app.post('/api/simulator/reset', async (request, reply) => {
+    const body = request.body as { wearerId?: string; confirmation?: string } | null;
+    if (body?.wearerId !== 'demo-wearer' || body.confirmation !== 'RESET_DEMO_DATA') {
+      return reply.code(400).send({ code: 'INVALID_DEMO_RESET', message: 'Demo wearer and confirmation are required' });
+    }
+    baseline.cancelPending(body.wearerId);
+    resetDemoWearer(db, body.wearerId);
+    latestRisk.delete(body.wearerId);
+    bus.publish('demo_reset', { wearerId: body.wearerId });
+    return { reset: true };
   });
   app.post('/api/simulator/:scenario', async (request, reply) => {
     const { scenario } = request.params as { scenario: Scenario };
