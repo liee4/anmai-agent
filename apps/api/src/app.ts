@@ -15,6 +15,8 @@ import type { RiskAssessment } from '@anmai/contracts';
 import { AnmaiAgent } from './features/agent/anmai-agent.js';
 import { EventBus, type BusEvent } from './infra/event-bus.js';
 import { BaselineExclusionRepository } from './infra/repositories/baseline-exclusion-repository.js';
+import { DailySummaryRepository } from './infra/repositories/daily-summary-repository.js';
+import { nextDemoHistory } from './features/simulator/demo-history.js';
 
 export interface AppDependencies { db: DatabaseContext; clock: Clock; baselineProvider?: BaselineModelProvider; baselineProviderName?: string }
 
@@ -90,6 +92,12 @@ export function buildApp({ db, clock, baselineProvider = new FakeBaselineProvide
     const body = request.body as { wearerId?: string };
     if (!scenarios.includes(scenario) || !body?.wearerId) return reply.code(400).send({ code: 'INVALID_SCENARIO', message: 'Known scenario and wearerId are required' });
     return evaluate(body.wearerId, scenarioSamples(scenario, clock.now()));
+  });
+  app.get('/api/simulator/history/next', async (request, reply) => {
+    const { wearerId } = request.query as { wearerId?: string };
+    if (!wearerId) return reply.code(400).send({ code: 'WEARER_REQUIRED', message: 'wearerId is required' });
+    const dates = new DailySummaryRepository(db).list(wearerId).map(day => day.date);
+    return reply.header('Cache-Control', 'no-store').send(nextDemoHistory(wearerId, dates));
   });
   app.get('/api/dashboard/:wearerId', async (request) => {
     const { wearerId } = request.params as { wearerId: string };

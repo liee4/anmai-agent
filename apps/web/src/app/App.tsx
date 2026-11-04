@@ -9,15 +9,6 @@ const stateLabels: Record<string, string> = { wearer_alert: '等待佩戴者回�
 const riskLabels: Record<string, string> = { normal: '体征平稳', abnormal: '持续异常', worsening: '明显恶化', untrusted_data: '数据不可信', mild: '轻度偏离' };
 const reasonLabels: Record<string, string> = { heart_rate_persistent: '心率持续异常', spo2_persistent: '血氧持续异常', blood_pressure_confirmed_twice: '两次血压测量异常', multiple_vitals: '多项体征异常', rest_or_night: '发生在静息或夜间', fixed_heart_rate_high: '心率触及演示固定上限', fixed_heart_rate_low: '心率触及演示固定下限', fixed_spo2_low: '血氧触及演示固定下限', fixed_systolic_high: '血压触及演示固定上限', fixed_systolic_low: '血压触及演示固定下限', device_untrusted_or_invalid: '设备数据质量不足', insufficient_recent_samples: '最近有效采样不足' };
 
-function demoHistory() {
-  const data = [];
-  const first = Date.UTC(2026, 9, 1);
-  for (let day = 0; day < 14; day++) for (let minute = 0; minute < 480; minute++) {
-    data.push({ timestamp: new Date(first + day * 86_400_000 + minute * 60_000).toISOString(), heartRate: minute < 120 ? 76 + day % 3 : 91 + day % 4, spo2: 97, activity: minute < 120 ? 'resting' : 'activity' });
-  }
-  return JSON.stringify({ inputMode: 'auto', wearerId, data });
-}
-
 function secondsLeft(deadlineAt: string | null): number | null { return deadlineAt ? Math.max(0, Math.ceil((Date.parse(deadlineAt) - Date.now()) / 1000)) : null; }
 function speakSimulation(script: string): void {
   if (!('speechSynthesis' in window)) return;
@@ -56,6 +47,14 @@ export function App() {
     await run(async () => {
       const response = await api.ingest(JSON.parse(input));
       setResult(`${response.detectedMode === 'daily' ? '逐日' : '历史'}导入 · 覆盖 ${response.coveredDays} 天 · 有效 ${response.successfulDays} 天 · 完整周期 ${response.completedCycles} 个 · 基线版本 ${response.baselineVersion ?? '尚无'}`);
+    });
+  }
+
+  async function fillNextDemoHistory() {
+    await run(async () => {
+      const next = await api.nextDemoHistory(wearerId);
+      setInput(JSON.stringify(next));
+      setResult(`已填入 ${next.data[0]?.timestamp.slice(0, 10)} 至 ${next.data.at(-1)?.timestamp.slice(0, 10)} 的演示数据，点击“导入并检查基线”。`);
     });
   }
 
@@ -99,7 +98,7 @@ export function App() {
             {event && <EventTimeline eventId={event.eventId} stateVersion={event.stateVersion} />}
           </section>
           <section id="baseline" className="panel baseline-panel"><div className="panel-heading"><h2>个人基线</h2><span className={`status ${dashboard?.baselineState.status === 'paused' ? 'paused' : 'neutral'}`}>{dashboard?.baselineState.status === 'paused' ? '学习已暂停' : '学习中'}</span></div><div className="baseline-head"><div><span>当前版本</span><strong>{dashboard?.baseline?.version ? `v${dashboard.baseline.version}` : '尚未生成'}</strong></div><div><span>模型 Provider</span><strong>{dashboard?.provider ?? '—'}</strong></div></div><p className="fine-print">本地代码计算观察基线；模型只提出个性化软阈值候选，经安全校验后发布。</p>{dashboard?.baseline?.baseline.observations?.map(item => <div className="observation" key={item.context}><strong>{item.context === 'resting' ? '静息' : item.context === 'activity' ? '活动' : '夜间'}</strong><span>心率中位数 {item.heartRate?.median ?? '—'} 次/分</span><span>血氧中位数 {item.spo2?.median ?? '—'}%</span></div>)}{dashboard?.baselineState.status === 'paused' && <button disabled={busy || Boolean(event)} onClick={() => void run(() => api.resume(wearerId))}>我已恢复，重新开启基线学习</button>}</section>
-          <section id="import" className="panel import-panel"><div className="panel-heading"><h2>统一数据输入</h2><span className="section-note">JSON · 自动识别逐日或历史</span></div><label htmlFor="vital-json">体征数据</label><textarea id="vital-json" value={input} onChange={event => setInput(event.target.value)} placeholder='{"inputMode":"auto","wearerId":"demo-wearer","data":[...]}'/><div className="import-actions"><button disabled={busy} onClick={() => setInput(demoHistory())}>填入 14 天演示数据</button><button className="primary" disabled={busy || !input.trim()} onClick={() => void importData()}>导入并检查基线</button></div>{result && <p className="result" role="status">{result}</p>}</section>
+          <section id="import" className="panel import-panel"><div className="panel-heading"><h2>统一数据输入</h2><span className="section-note">JSON · 自动识别逐日或历史</span></div><label htmlFor="vital-json">体征数据</label><textarea id="vital-json" value={input} onChange={event => setInput(event.target.value)} placeholder='{"inputMode":"auto","wearerId":"demo-wearer","data":[...]}'/><div className="import-actions"><button disabled={busy} onClick={() => void fillNextDemoHistory()}>填入下一轮 14 天数据</button><button className="primary" disabled={busy || !input.trim()} onClick={() => void importData()}>导入并检查基线</button></div>{result && <p className="result" role="status">{result}</p>}</section>
         </div><footer>安脉 Agent 原型 · 所有电话、亲属通知与急救行为均为模拟</footer>
       </main>
     </div>
