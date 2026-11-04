@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { api, type Dashboard } from '../api/client.js';
 import { TimerPanel } from './TimerPanel.js';
 import { EventTimeline } from './EventTimeline.js';
@@ -26,6 +26,14 @@ export function App() {
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const [now, setNow] = useState(Date.now());
+  const inputRef = useRef<HTMLTextAreaElement>(null);
+  const [inputViewRevision, setInputViewRevision] = useState(0);
+
+  useLayoutEffect(() => {
+    if (!inputRef.current) return;
+    inputRef.current.setSelectionRange(0, 0);
+    inputRef.current.scrollTo(0, 0);
+  }, [inputViewRevision]);
 
   const refresh = useCallback(async () => { try { setDashboard(await api.dashboard(wearerId)); } catch (failure) { setError(String(failure)); } }, []);
   useEffect(() => { void refresh(); const timer = setInterval(() => { setNow(Date.now()); void refresh(); }, 1000); return () => clearInterval(timer); }, [refresh]);
@@ -46,6 +54,8 @@ export function App() {
   async function importData() {
     await run(async () => {
       const response = await api.ingest(JSON.parse(input));
+      setInput('');
+      setInputViewRevision(value => value + 1);
       setResult(`${response.detectedMode === 'daily' ? '逐日' : '历史'}导入 · 覆盖 ${response.coveredDays} 天 · 有效 ${response.successfulDays} 天 · 完整周期 ${response.completedCycles} 个 · 基线版本 ${response.baselineVersion ?? '尚无'}`);
     });
   }
@@ -54,6 +64,7 @@ export function App() {
     await run(async () => {
       const next = await api.nextDemoHistory(wearerId);
       setInput(JSON.stringify(next));
+      setInputViewRevision(value => value + 1);
       setResult(`已填入 ${next.data[0]?.timestamp.slice(0, 10)} 至 ${next.data.at(-1)?.timestamp.slice(0, 10)} 的演示数据，点击“导入并检查基线”。`);
     });
   }
@@ -98,7 +109,7 @@ export function App() {
             {event && <EventTimeline eventId={event.eventId} stateVersion={event.stateVersion} />}
           </section>
           <section id="baseline" className="panel baseline-panel"><div className="panel-heading"><h2>个人基线</h2><span className={`status ${dashboard?.baselineState.status === 'paused' ? 'paused' : 'neutral'}`}>{dashboard?.baselineState.status === 'paused' ? '学习已暂停' : '学习中'}</span></div><div className="baseline-head"><div><span>当前版本</span><strong>{dashboard?.baseline?.version ? `v${dashboard.baseline.version}` : '尚未生成'}</strong></div><div><span>模型 Provider</span><strong>{dashboard?.provider ?? '—'}</strong></div></div><p className="fine-print">本地代码计算观察基线；模型只提出个性化软阈值候选，经安全校验后发布。</p>{dashboard?.baseline?.baseline.observations?.map(item => <div className="observation" key={item.context}><strong>{item.context === 'resting' ? '静息' : item.context === 'activity' ? '活动' : '夜间'}</strong><span>心率中位数 {item.heartRate?.median ?? '—'} 次/分</span><span>血氧中位数 {item.spo2?.median ?? '—'}%</span></div>)}{dashboard?.baselineState.status === 'paused' && <button disabled={busy || Boolean(event)} onClick={() => void run(() => api.resume(wearerId))}>我已恢复，重新开启基线学习</button>}</section>
-          <section id="import" className="panel import-panel"><div className="panel-heading"><h2>统一数据输入</h2><span className="section-note">JSON · 自动识别逐日或历史</span></div><label htmlFor="vital-json">体征数据</label><textarea id="vital-json" value={input} onChange={event => setInput(event.target.value)} placeholder='{"inputMode":"auto","wearerId":"demo-wearer","data":[...]}'/><div className="import-actions"><button disabled={busy} onClick={() => void fillNextDemoHistory()}>填入下一轮 14 天数据</button><button className="primary" disabled={busy || !input.trim()} onClick={() => void importData()}>导入并检查基线</button></div>{result && <p className="result" role="status">{result}</p>}</section>
+          <section id="import" className="panel import-panel"><div className="panel-heading"><h2>统一数据输入</h2><span className="section-note">JSON · 自动识别逐日或历史</span></div><label htmlFor="vital-json">体征数据</label><textarea ref={inputRef} id="vital-json" value={input} onChange={event => setInput(event.target.value)} placeholder='{"inputMode":"auto","wearerId":"demo-wearer","data":[...]}'/><div className="import-actions"><button disabled={busy} onClick={() => void fillNextDemoHistory()}>填入下一轮 14 天数据</button><button className="primary" disabled={busy || !input.trim()} onClick={() => void importData()}>导入并检查基线</button></div>{result && <p className="result" role="status">{result}</p>}</section>
         </div><footer>安脉 Agent 原型 · 所有电话、亲属通知与急救行为均为模拟</footer>
       </main>
     </div>
