@@ -5,7 +5,7 @@ import type { MessageProvider, MessageContent } from './message-provider.js';
 import { fallbackMessages } from './message-provider.js';
 
 export class MessageService {
-  constructor(private readonly db: DatabaseContext, private readonly clock: Clock, private readonly provider: MessageProvider, private readonly providerName: string) {}
+  constructor(private readonly db: DatabaseContext, private readonly clock: Clock, private readonly provider: MessageProvider, private readonly providerName: string | ((wearerId: string) => string)) {}
 
   get(eventId: string, state: EmergencyEvent['state']): EventMessages | null {
     const row = this.db.raw.prepare('SELECT bundle_json,provider FROM event_messages WHERE event_id=? AND state=?').get(eventId, state) as { bundle_json: string; provider: string } | undefined;
@@ -22,7 +22,7 @@ export class MessageService {
       if (Object.keys(generated).some(key => !(key in fallback)) || Object.keys(fallback).some(key => typeof generated[key as keyof MessageContent] !== 'string' || !generated[key as keyof MessageContent]!.trim() || generated[key as keyof MessageContent]!.length > 300)) throw new Error('Invalid message');
       bundle = generated;
     } catch { return this.get(event.eventId, event.state)!; }
-    this.db.raw.prepare("UPDATE event_messages SET provider=?,status='generated',bundle_json=?,updated_at=? WHERE event_id=? AND state=?").run(this.providerName, JSON.stringify(bundle), this.clock.now().toISOString(), event.eventId, event.state);
+    this.db.raw.prepare("UPDATE event_messages SET provider=?,status='generated',bundle_json=?,updated_at=? WHERE event_id=? AND state=?").run(typeof this.providerName === 'function' ? this.providerName(event.wearerId) : this.providerName, JSON.stringify(bundle), this.clock.now().toISOString(), event.eventId, event.state);
     return this.get(event.eventId, event.state)!;
   }
 }

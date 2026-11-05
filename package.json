@@ -13,7 +13,8 @@
     "typecheck": "pnpm build:contracts && pnpm --filter @anmai/api typecheck && pnpm --filter @anmai/web typecheck",
     "build": "pnpm build:contracts && pnpm --filter @anmai/api build && pnpm --filter @anmai/web build",
     "e2e": "pnpm build:contracts && pnpm --filter @anmai/api build && node scripts/run-e2e.mjs",
-    "verify": "pnpm test && pnpm typecheck && pnpm build && pnpm e2e"
+    "smoke:public": "node scripts/smoke-public.mjs",
+    "verify": "pnpm test && pnpm typecheck && pnpm build && pnpm smoke:public && pnpm e2e"
   },
   "devDependencies": {
     "@playwright/test": "^1.64.1",

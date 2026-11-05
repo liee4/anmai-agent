@@ -4,8 +4,8 @@ import { TimerPanel } from './TimerPanel.js';
 import { EventTimeline } from './EventTimeline.js';
 import { RiskReviewStatus } from './RiskReviewStatus.js';
 import { EmergencyCard } from './EmergencyCard.js';
+import { ProviderModePanel } from './ProviderModePanel.js';
 
-const wearerId = 'demo-wearer';
 const scenarioLabels = { normal: '正常', activity: '轻度活动', abnormal: '持续异常', worsening: '明显恶化', loose_device: '设备松动' } as const;
 const stateLabels: Record<string, string> = { wearer_alert: '等待佩戴者回应', safe_recheck: '继续后台检测', primary_contact: '等待主要亲属接管', other_contacts: '等待其他亲属接管', relative_takeover: '亲属已接管', simulated_call: '模拟自动呼救', closed: '事件已结束' };
 const riskLabels: Record<string, string> = { normal: '体征平稳', abnormal: '持续异常', worsening: '明显恶化', untrusted_data: '数据不可信', mild: '轻度偏离' };
@@ -22,6 +22,8 @@ function speakSimulation(script: string): void {
 }
 
 export function App() {
+  const [wearerId, setWearerId] = useState('');
+  const [publicDemo, setPublicDemo] = useState(false);
   const [dashboard, setDashboard] = useState<Dashboard | null>(null);
   const [input, setInput] = useState('');
   const [result, setResult] = useState('');
@@ -37,15 +39,17 @@ export function App() {
     inputRef.current.scrollTo(0, 0);
   }, [inputViewRevision]);
 
-  const refresh = useCallback(async () => { try { setDashboard(await api.dashboard(wearerId)); } catch (failure) { setError(String(failure)); } }, []);
+  useEffect(() => { void api.session().then(session => { setPublicDemo(session.publicDemo); setWearerId(session.wearerId); }).catch(failure => setError(String(failure))); }, []);
+  const refresh = useCallback(async () => { if (!wearerId) return; try { setDashboard(await api.dashboard(wearerId)); } catch (failure) { setError(String(failure)); } }, [wearerId]);
   useEffect(() => { void refresh(); const timer = setInterval(() => { setNow(Date.now()); void refresh(); }, 1000); return () => clearInterval(timer); }, [refresh]);
   useEffect(() => {
+    if (!wearerId) return;
     const stream = new EventSource(`/api/events/stream?wearerId=${encodeURIComponent(wearerId)}`);
     const update = () => { void refresh(); };
     stream.addEventListener('snapshot', update);
     stream.addEventListener('update', update);
     return () => stream.close();
-  }, [refresh]);
+  }, [refresh, wearerId]);
 
   async function run(work: () => Promise<unknown>) {
     setBusy(true); setError('');
@@ -100,15 +104,16 @@ export function App() {
   }, [emergencyScript]);
   void now;
 
+  if (!wearerId) return <div className="shell"><p role="status">正在载入演示会话…</p>{error && <p role="alert">{error}</p>}</div>;
   return <div className="shell">
     <aside className="sidebar"><div className="brand"><span className="brand-mark" aria-hidden="true">安</span><div><strong>安脉</strong><small>健康监测演示</small></div></div><nav aria-label="页面区域"><a href="#monitor">实时监测</a><a href="#baseline">个人基线</a><a href="#response">应急响应</a><a href="#import">数据导入</a></nav><div className="sidebar-foot">模拟数据 · 非医疗诊断</div></aside>
     <div className="frame"><header className="topbar"><span>高风险老年人群 · 演示佩戴者</span><span className="connection">本地原型</span></header>
-      <main className="sheet"><div className="title-row"><div><h1>监测与响应</h1><p>规则检测体征异常，普通异常经模型复核；明显恶化立即联系亲属。</p></div><span className="demo-tag">仅供比赛演示</span></div>
+      <main className="sheet"><div className="title-row"><div><h1>监测与响应</h1><p>规则检测体征异常，普通异常经模型复核；明显恶化立即联系亲属。</p></div><span className="demo-tag">仅供比赛演示</span></div>{publicDemo && <ProviderModePanel onChange={() => void refresh()} />}
         {error && <div className="notice error" role="alert">{error}</div>}
         <div className="main-grid">
           <section id="monitor" className="panel monitor-panel"><div className="panel-heading"><h2>实时监测</h2><span className={`status ${risk?.level ?? 'neutral'}`}>{riskLabels[risk?.level ?? ''] ?? '等待数据'}</span></div>
             <div className="risk-display"><strong>{risk?.score ?? '—'}</strong><span>风险分数</span></div><p className="reason">{risk?.reasons.length ? risk.reasons.map(reason => reasonLabels[reason] ?? reason).join(' · ') : '选择一个模拟场景开始监测。'}</p>
-            <RiskReviewStatus review={dashboard?.riskReview ?? null} provider={dashboard?.riskReviewProvider ?? '—'} risk={risk ?? null} seconds={secondsLeft(dashboard?.riskReview?.deadlineAt ?? null)} busy={busy} onHelp={() => void run(() => api.help(wearerId))} />
+            <RiskReviewStatus review={dashboard?.riskReview ?? null} risk={risk ?? null} seconds={secondsLeft(dashboard?.riskReview?.deadlineAt ?? null)} busy={busy} onHelp={() => void run(() => api.help(wearerId))} />
             <div className="scenario-controls" aria-label="模拟场景">{Object.entries(scenarioLabels).map(([key, label]) => <button key={key} disabled={busy} onClick={() => void run(async () => { const response = await api.scenario(wearerId, key); setResult(`${label}场景：${riskLabels[response.risk.level]}`); })}>{label}</button>)}</div>
             <p className="fine-print">判断采用演示阈值与持续时间规则。设备松动时只提示数据质量，不启动应急联系。</p>
           </section>
@@ -121,8 +126,8 @@ export function App() {
             {emergencyScript && <button className="late-response" onClick={() => speakSimulation(emergencyScript)}>重播模拟语音</button>}
             {event && <EventTimeline eventId={event.eventId} stateVersion={event.stateVersion} />}
           </section>
-          <section id="baseline" className="panel baseline-panel"><div className="panel-heading"><h2>个人基线</h2><span className={`status ${dashboard?.baselineState.status === 'paused' ? 'paused' : 'neutral'}`}>{dashboard?.baselineState.status === 'paused' ? '学习已暂停' : '学习中'}</span></div><div className="baseline-head"><div><span>当前版本</span><strong>{dashboard?.baseline?.version ? `v${dashboard.baseline.version}` : '尚未生成'}</strong></div><div><span>模型 Provider</span><strong>{dashboard?.provider ?? '—'}</strong></div></div><p className="fine-print">本地代码计算观察基线；模型只提出个性化软阈值候选，经安全校验后发布。</p>{dashboard?.aggregationWarning && <p className="baseline-warning">当前基线使用旧版分钟聚合数据。演示新算法前请重置测试数据并重新导入。</p>}{dashboard?.baseline?.baseline.observations?.map(item => <div className="observation" key={item.context}><strong>{item.context === 'resting' ? '静息' : item.context === 'activity' ? '活动' : '夜间'}</strong><span>心率中位数 {item.heartRate?.median ?? '—'} 次/分</span><span>血氧中位数 {item.spo2?.median ?? '—'}%</span></div>)}{dashboard?.baselineState.status === 'paused' && <button disabled={busy || Boolean(event)} onClick={() => void run(() => api.resume(wearerId))}>我已恢复，重新开启基线学习</button>}</section>
-          <section id="import" className="panel import-panel"><div className="panel-heading"><h2>统一数据输入</h2><span className="section-note">JSON · 自动识别逐日或历史</span></div><label htmlFor="vital-json">体征数据</label><textarea ref={inputRef} id="vital-json" value={input} onChange={event => setInput(event.target.value)} placeholder='{"inputMode":"auto","wearerId":"demo-wearer","data":[...]}'/><div className="import-actions"><button disabled={busy} onClick={() => void fillNextDemoHistory()}>填入下一轮 14 天数据</button><button className="primary" disabled={busy || !input.trim()} onClick={() => void importData()}>导入并检查基线</button><button disabled={busy} onClick={() => void resetDemo()}>重置测试数据</button></div>{result && <p className="result" role="status">{result}</p>}</section>
+          <section id="baseline" className="panel baseline-panel"><div className="panel-heading"><h2>个人基线</h2><span className={`status ${dashboard?.baselineState.status === 'paused' ? 'paused' : 'neutral'}`}>{dashboard?.baselineState.status === 'paused' ? '学习已暂停' : '学习中'}</span></div><div className="baseline-head"><div><span>当前版本</span><strong>{dashboard?.baseline?.version ? `v${dashboard.baseline.version}` : '尚未生成'}</strong></div><div><span>生成该版的模型</span><strong>{dashboard?.baseline?.baseline.provider ?? '—'}</strong></div></div><p className="fine-print">本地代码计算观察基线；模型只提出个性化软阈值候选，经安全校验后发布。</p>{dashboard?.aggregationWarning && <p className="baseline-warning">当前基线使用旧版分钟聚合数据。演示新算法前请重置测试数据并重新导入。</p>}{dashboard?.baseline?.baseline.observations?.map(item => <div className="observation" key={item.context}><strong>{item.context === 'resting' ? '静息' : item.context === 'activity' ? '活动' : '夜间'}</strong><span>心率中位数 {item.heartRate?.median ?? '—'} 次/分</span><span>血氧中位数 {item.spo2?.median ?? '—'}%</span></div>)}{dashboard?.baselineState.status === 'paused' && <button disabled={busy || Boolean(event)} onClick={() => void run(() => api.resume(wearerId))}>我已恢复，重新开启基线学习</button>}</section>
+          <section id="import" className="panel import-panel"><div className="panel-heading"><h2>统一数据输入</h2><span className="section-note">JSON · 自动识别逐日或历史</span></div><label htmlFor="vital-json">体征数据</label><textarea ref={inputRef} id="vital-json" value={input} onChange={event => setInput(event.target.value)} placeholder={JSON.stringify({ inputMode: 'auto', wearerId, data: ['...'] })}/><div className="import-actions"><button disabled={busy} onClick={() => void fillNextDemoHistory()}>填入下一轮 14 天数据</button><button className="primary" disabled={busy || !input.trim()} onClick={() => void importData()}>导入并检查基线</button><button disabled={busy} onClick={() => void resetDemo()}>重置测试数据</button></div>{result && <p className="result" role="status">{result}</p>}</section>
         </div><footer>安脉 Agent 原型 · 所有电话、亲属通知与急救行为均为模拟</footer>
       </main>
     </div>

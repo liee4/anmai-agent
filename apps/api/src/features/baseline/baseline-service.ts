@@ -50,7 +50,7 @@ export class BaselineService {
   private readonly exclusions: BaselineExclusionRepository;
   private readonly resetEpochs = new Map<string, number>();
 
-  constructor(private readonly db: DatabaseContext, private readonly provider: BaselineModelProvider, private readonly providerName = 'fake') {
+  constructor(private readonly db: DatabaseContext, private readonly provider: BaselineModelProvider, private readonly providerName: string | ((wearerId: string) => string) = 'fake') {
     this.baselines = new BaselineRepository(db);
     this.summaries = new DailySummaryRepository(db);
     this.exclusions = new BaselineExclusionRepository(db);
@@ -126,7 +126,7 @@ export class BaselineService {
         if (result.summaryAccepted && prior) this.baselines.updateActiveMemory(cycle.wearerId, result.longTermSummary, contributors);
         return;
       }
-      const baseline: PublishedBaseline = { observations: request.observations, values: result.values, evidenceWeights: evidenceWeights(request.recentBaselines.length, request.longTermSummary !== null), attempts: result.attempts, provider: this.providerName, longTermSummary: result.longTermSummary, longTermContributors: contributors, aggregationVersion };
+      const baseline: PublishedBaseline = { observations: request.observations, values: result.values, evidenceWeights: evidenceWeights(request.recentBaselines.length, request.longTermSummary !== null), attempts: result.attempts, provider: typeof this.providerName === 'function' ? this.providerName(cycle.wearerId) : this.providerName, longTermSummary: result.longTermSummary, longTermContributors: contributors, aggregationVersion };
       this.baselines.publish({ wearerId: cycle.wearerId, version: this.baselines.nextVersion(cycle.wearerId), cycleId: cycle.id, publishedAt, baseline });
     });
     return result.attempts.length;

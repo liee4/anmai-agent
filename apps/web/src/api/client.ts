@@ -22,6 +22,7 @@ export interface Dashboard {
   messages: EventMessages | null;
   messageProvider: string;
 }
+export interface DemoSession { wearerId: string; publicDemo: boolean; mode: 'fake' | 'deepseek'; deepseekConfigured: boolean; remaining: number }
 
 async function json<T>(path: string, options?: RequestInit): Promise<T> {
   const response = await fetch(path, { ...options, headers: { ...(options?.body == null ? {} : { 'Content-Type': 'application/json' }), ...options?.headers } });
@@ -31,6 +32,9 @@ async function json<T>(path: string, options?: RequestInit): Promise<T> {
 }
 
 export const api = {
+  session: () => json<DemoSession>('/api/session'),
+  providerMode: () => json<Pick<DemoSession, 'mode' | 'deepseekConfigured' | 'remaining'>>('/api/settings/provider-mode'),
+  setProviderMode: (mode: 'fake' | 'deepseek') => json<Pick<DemoSession, 'mode' | 'deepseekConfigured' | 'remaining'>>('/api/settings/provider-mode', { method: 'PUT', body: JSON.stringify({ mode }) }),
   dashboard: (wearerId: string) => json<Dashboard>(`/api/dashboard/${encodeURIComponent(wearerId)}`),
   nextDemoHistory: (wearerId: string) => json<{ inputMode: string; wearerId: string; data: { timestamp: string; heartRate: number; spo2: number; activity: string }[] }>(`/api/simulator/history/next?wearerId=${encodeURIComponent(wearerId)}`),
   resetDemo: (wearerId: string) => json<{ reset: boolean }>('/api/simulator/reset', { method: 'POST', body: JSON.stringify({ wearerId, confirmation: 'RESET_DEMO_DATA' }) }),

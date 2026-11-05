@@ -9,7 +9,7 @@ import { EmergencyService } from '../../../src/features/emergency/emergency-serv
 const options = (content: string) => ({ apiKey: 'test-only', baseUrl: 'https://example.test', model: 'test-model', fetcher: vi.fn(async () => new Response(JSON.stringify({ choices: [{ message: { content } }] }), { status: 200 })) });
 
 it('accepts a strict risk decision and rejects an extra field from DeepSeek', async () => {
-  const request = { risk: { level: 'abnormal', score: 2, reasons: [], assessedAt: '2026-11-04T00:00:00Z' }, latest: { timestamp: '2026-11-04T00:00:00Z', heartRate: 108, spo2: 97, activity: 'resting', deviceTrusted: true }, recent: [], baselineVersion: 1, baseline: {} } as Parameters<DeepSeekRiskReviewProvider['review']>[0];
+  const request = { wearerId: 'w', risk: { level: 'abnormal', score: 2, reasons: [], assessedAt: '2026-11-04T00:00:00Z' }, latest: { timestamp: '2026-11-04T00:00:00Z', heartRate: 108, spo2: 97, activity: 'resting', deviceTrusted: true }, recent: [], baselineVersion: 1, baseline: {} } as Parameters<DeepSeekRiskReviewProvider['review']>[0];
   const valid = options('{"decision":"observe","reason":"短时复查"}');
   expect(await new DeepSeekRiskReviewProvider(valid).review(request)).toEqual({ decision: 'observe', reason: '短时复查' });
   expect(valid.fetcher.mock.calls).toHaveLength(1);

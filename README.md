@@ -36,6 +36,12 @@ pnpm dev
 三个 Provider 可以独立选择 `fake` 或 `deepseek`，共用后端的 `DEEPSEEK_API_KEY`；可通过 `DEEPSEEK_BASE_URL` 和 `DEEPSEEK_MODEL` 覆盖接口地址和模型名。密钥只留在本机环境变量，不要写进仓库。风险复核失败或超时时直接询问佩戴者；文案生成失败时使用固定模板；基线候选最多生成五次，仍不合格则不发布。
 现场接入步骤见 [演示操作](docs/demo-runbook.md)。
 
+## 给评委的稳定演示链接
+
+项目现在可用根目录 `Dockerfile` 部署为单个服务：同一 HTTPS 域名同时提供页面和 API。推荐在自己的 Railway 账户中连接私有仓库，挂载 `/data` 持久化卷，并设置 `PUBLIC_DEMO=1`、`DATABASE_PATH=/data/anmai.sqlite`、`DEMO_ACCESS_TOKEN` 与 `DEEPSEEK_API_KEY`。Key 只在 Railway 的服务 Variables 中填写，页面仅显示“已配置”和剩余额度。[完整操作与分享链接格式](docs/demo-runbook.md)。
+
+公开模式下，每位评委的模拟数据和模型模式按浏览器会话隔离；默认 Fake，页面可一次切换三个模型功能到 DeepSeek。DeepSeek 调用默认每会话最多 20 次、全站最多 100 次，可用环境变量调整。请在比赛前用自己的账号检查 Railway 与 DeepSeek 的实际计费和额度。
+
 ## 演示流程
 
 1. 点击“填入下一轮 14 天数据”，然后点击“导入并检查基线”。每轮成功导入后，按钮会根据已保存的日期准备下一个 14 天周期，并调整模拟体征；未导入时重复点击仍是当前待导入周期。系统自动识别为历史数据，按本地日期拆分，保存每日统计；满足 14 天周期与有效日条件后调用基线 Provider。若要演示逐日积累，也可通过同一个输入口每天传入一份数据。

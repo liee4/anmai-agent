@@ -20,7 +20,7 @@ async function ready(url, process, label) {
 }
 
 if (await portOpen(3000) || await portOpen(5173)) throw new Error('E2E requires ports 3000 and 5173 to be free; stop other local servers first.');
-const api = spawn(process.execPath, ['apps/api/dist/main.js'], { stdio: 'inherit', env: { ...process.env, DATABASE_PATH: ':memory:', RISK_OBSERVATION_SECONDS: '1', BASELINE_PROVIDER: 'fake', RISK_REVIEW_PROVIDER: 'fake', MESSAGE_PROVIDER: 'fake' } });
+const api = spawn(process.execPath, ['apps/api/dist/main.js'], { stdio: 'inherit', env: { ...process.env, DATABASE_PATH: ':memory:', RISK_OBSERVATION_SECONDS: '1', PUBLIC_DEMO: '1', DEMO_ACCESS_TOKEN: 'e2e-demo-access-token-2026-11-05-test-only', DEEPSEEK_API_KEY: 'e2e-placeholder-never-used', BASELINE_PROVIDER: 'fake', RISK_REVIEW_PROVIDER: 'fake', MESSAGE_PROVIDER: 'fake' } });
 const web = spawn(process.execPath, ['apps/web/node_modules/vite/bin/vite.js', 'apps/web', '--host', '127.0.0.1'], { stdio: 'inherit' });
 try {
   await Promise.all([ready('http://127.0.0.1:3000/api/health', api, 'API'), ready('http://127.0.0.1:5173', web, 'Web')]);

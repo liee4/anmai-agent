@@ -20,7 +20,7 @@ interface ReviewRow {
 export type ReviewAction = 'ask' | 'observe' | 'stale';
 
 export class RiskReviewService {
-  constructor(private readonly db: DatabaseContext, private readonly clock: Clock, private readonly provider: RiskReviewProvider, readonly providerName: string, private observationSeconds = 30) {
+  constructor(private readonly db: DatabaseContext, private readonly clock: Clock, private readonly provider: RiskReviewProvider, readonly providerName: string | ((wearerId: string) => string), private observationSeconds = 30) {
     if (!Number.isInteger(observationSeconds) || observationSeconds < 1) throw new Error('Observation seconds must be positive');
   }
 
@@ -70,9 +70,10 @@ export class RiskReviewService {
     const generation = (current?.generation ?? 0) + 1;
     const compact = ({ location: _location, ...sample }: VitalSample) => sample;
     const recent = samples.filter(sample => Date.parse(risk.assessedAt) - Date.parse(sample.timestamp) <= 60_000).slice(-60).map(compact);
-    const request: RiskReviewRequest = { risk, latest: compact(samples.at(-1)!), recent, baselineVersion, baseline };
+    const request: RiskReviewRequest = { wearerId, risk, latest: compact(samples.at(-1)!), recent, baselineVersion, baseline };
+    const providerName = typeof this.providerName === 'function' ? this.providerName(wearerId) : this.providerName;
     const inputHash = createHash('sha256').update(JSON.stringify(request)).digest('hex');
-    this.db.raw.prepare('INSERT INTO risk_review_state(wearer_id,generation,status,provider,decision,reason,deadline_at,fallback_reason,last_risk_json,last_sample_json,updated_at) VALUES (?,?,\'pending\',?,NULL,NULL,NULL,NULL,?,?,?) ON CONFLICT(wearer_id) DO UPDATE SET generation=excluded.generation,status=excluded.status,provider=excluded.provider,decision=NULL,reason=NULL,deadline_at=NULL,fallback_reason=NULL,last_risk_json=excluded.last_risk_json,last_sample_json=excluded.last_sample_json,updated_at=excluded.updated_at').run(wearerId, generation, this.providerName, JSON.stringify(risk), JSON.stringify(samples.at(-1)), now);
+    this.db.raw.prepare('INSERT INTO risk_review_state(wearer_id,generation,status,provider,decision,reason,deadline_at,fallback_reason,last_risk_json,last_sample_json,updated_at) VALUES (?,?,\'pending\',?,NULL,NULL,NULL,NULL,?,?,?) ON CONFLICT(wearer_id) DO UPDATE SET generation=excluded.generation,status=excluded.status,provider=excluded.provider,decision=NULL,reason=NULL,deadline_at=NULL,fallback_reason=NULL,last_risk_json=excluded.last_risk_json,last_sample_json=excluded.last_sample_json,updated_at=excluded.updated_at').run(wearerId, generation, providerName, JSON.stringify(risk), JSON.stringify(samples.at(-1)), now);
 
     let decision: RiskReviewDecision | null = null;
     let fallbackReason: string | null = null;
@@ -90,7 +91,7 @@ export class RiskReviewService {
     const deadline = observe ? new Date(this.clock.now().getTime() + this.observationSeconds * 1000).toISOString() : null;
     this.db.transaction(() => {
       this.db.raw.prepare('UPDATE risk_review_state SET status=?, decision=?, reason=?, deadline_at=?, fallback_reason=?, updated_at=? WHERE wearer_id=? AND generation=? AND status=\'pending\'').run(observe ? 'observe' : 'asked', decision?.decision ?? null, decision?.reason ?? null, deadline, fallbackReason, this.clock.now().toISOString(), wearerId, generation);
-      this.db.raw.prepare('INSERT INTO risk_review_audit(id,wearer_id,generation,provider,decision,reason,fallback_reason,input_hash,created_at) VALUES (?,?,?,?,?,?,?,?,?)').run(randomUUID(), wearerId, generation, this.providerName, decision?.decision ?? null, decision?.reason ?? null, fallbackReason, inputHash, this.clock.now().toISOString());
+      this.db.raw.prepare('INSERT INTO risk_review_audit(id,wearer_id,generation,provider,decision,reason,fallback_reason,input_hash,created_at) VALUES (?,?,?,?,?,?,?,?,?)').run(randomUUID(), wearerId, generation, providerName, decision?.decision ?? null, decision?.reason ?? null, fallbackReason, inputHash, this.clock.now().toISOString());
     });
     return { action: observe ? 'observe' : 'ask', snapshot: this.get(wearerId) };
   }

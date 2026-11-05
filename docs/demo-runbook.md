@@ -1,5 +1,16 @@
 # 本地演示操作
 
+## 评委通过稳定 URL 演示
+
+1. 在自己的 Railway 账户创建服务，连接私有 GitHub 仓库 `liee4/anmai` 的 `main` 分支，选择仓库根目录的 `Dockerfile` 构建。服务用一个端口同时提供页面和 API；无需分别部署 Vite 与 API。
+2. 给该服务挂载持久化 Volume，挂载路径 `/data`。在服务 Variables 设置 `PUBLIC_DEMO=1`、`DATABASE_PATH=/data/anmai.sqlite`、`DEEPSEEK_API_KEY`（你的真实密钥）、`DEMO_ACCESS_TOKEN`（随机访问凭证）、`DEMO_DEEPSEEK_SESSION_LIMIT=20`、`DEMO_DEEPSEEK_GLOBAL_LIMIT=100`。`PORT` 使用 Railway 提供的值。不要把真实 Key 写进 GitHub、前端或分享链接。
+3. 随机凭证可在本机终端用 `node -e "console.log(require('node:crypto').randomBytes(24).toString('hex'))"` 生成。保留这个值并填入 `DEMO_ACCESS_TOKEN`。它只是评委入口凭证，**不是** DeepSeek Key。
+4. Railway 服务健康检查可设为 `/api/health`。在服务设置的 Public Networking 生成 HTTPS 域名。把 `https://<你的域名>/join/<DEMO_ACCESS_TOKEN>` 发给评委；首次打开会建立演示会话并跳转到不含凭证的页面。每位评委的模拟数据和模式独立。
+5. 评委在页面“演示模型”处点 DeepSeek，之后新开始的基线、异常复核与事件文案任务使用你的后端 Key。已有基线与事件不会重算。当前有活跃事件或模型复核时，先完成流程再切换。点 Fake 可回到离线演示。
+6. 用另一台设备通过评委链接完整试跑：导入 14 天数据、切换 DeepSeek、再导入下一周期以触发真实基线调用、触发普通异常查看复核 Provider。检查 Railway 日志和 DeepSeek 账户用量。若 Key 未配置、请求失败或演示额度用尽，页面会给出状态或安全回退；不要把回退结果说成真实模型结果。
+
+Railway 的服务、持久化卷与 DeepSeek API 用量可能产生费用。公开演示只使用模拟体征、模拟联系人和模拟呼救。访问凭证应只发给评委；如需撤销旧链接，在 Railway 更换 `DEMO_ACCESS_TOKEN` 并重新部署。Railway 账户创建、支付、真实 Key 填写与生成域名由账户持有人在平台完成。
+
 ## 准备
 
 在 `anmai` 目录运行 `pnpm install`、`pnpm verify`、`pnpm dev`。打开 `http://127.0.0.1:5173`。默认使用三个离线 Fake Provider，可稳定演示基线、风险复核与事件文案。需要真实 DeepSeek 调用时，先在 API 进程环境配置需要启用的 Provider 和 `DEEPSEEK_API_KEY`；不要把密钥放进演示页面或仓库。

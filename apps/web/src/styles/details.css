@@ -8,3 +8,4 @@
 @media(max-width:760px){.review-head{align-items:flex-start;flex-direction:column;gap:2px}.review-status button{min-height:44px}}
 @media(min-width:761px){.main-grid{grid-template-areas:"monitor response" "baseline response" "import response";grid-template-rows:max-content max-content max-content}.monitor-panel{grid-area:monitor}.response-panel{grid-area:response}.baseline-panel{grid-area:baseline}.import-panel{grid-area:import}}
 .baseline-warning{font-size:12px;line-height:1.55;color:#82520b;background:#fff8ea;padding:9px 11px;border-radius:4px;margin:12px 0}
+.provider-mode{display:flex;align-items:center;flex-wrap:wrap;gap:8px;margin:-10px 0 20px;font-size:13px}.provider-mode>span:first-child{font-weight:600;margin-right:4px}.provider-mode button:disabled{opacity:1;background:#e5f1f3;color:#135a6b;border-color:#a7cbd3}.provider-mode small{color:#5d6265}.provider-mode [role=alert]{color:#9d1d23}

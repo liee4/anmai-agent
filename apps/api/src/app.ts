@@ -27,10 +27,11 @@ import { EventCardService } from './features/emergency/event-card-service.js';
 import { MessageService } from './features/agent/message-service.js';
 import { FakeMessageProvider } from './features/agent/fake-message-provider.js';
 import type { MessageProvider } from './features/agent/message-provider.js';
+import type { DemoSessions } from './features/demo/demo-session.js';
 
-export interface AppDependencies { db: DatabaseContext; clock: Clock; baselineProvider?: BaselineModelProvider; baselineProviderName?: string; riskReviewProvider?: RiskReviewProvider; riskReviewProviderName?: string; riskObservationSeconds?: number; messageProvider?: MessageProvider; messageProviderName?: string }
+export interface AppDependencies { db: DatabaseContext; clock: Clock; baselineProvider?: BaselineModelProvider; baselineProviderName?: string | ((wearerId: string) => string); riskReviewProvider?: RiskReviewProvider; riskReviewProviderName?: string | ((wearerId: string) => string); riskObservationSeconds?: number; messageProvider?: MessageProvider; messageProviderName?: string | ((wearerId: string) => string); demoSessions?: DemoSessions }
 
-export function buildApp({ db, clock, baselineProvider = new FakeBaselineProvider(), baselineProviderName = 'fake', riskReviewProvider = new FakeRiskReviewProvider(), riskReviewProviderName = 'fake', riskObservationSeconds = 30, messageProvider = new FakeMessageProvider(), messageProviderName = 'fake' }: AppDependencies): FastifyInstance {
+export function buildApp({ db, clock, baselineProvider = new FakeBaselineProvider(), baselineProviderName = 'fake', riskReviewProvider = new FakeRiskReviewProvider(), riskReviewProviderName = 'fake', riskObservationSeconds = 30, messageProvider = new FakeMessageProvider(), messageProviderName = 'fake', demoSessions }: AppDependencies): FastifyInstance {
   const app = Fastify({ logger: false, bodyLimit: 10 * 1024 * 1024 });
   const pipeline = new SamplePipeline(db);
   const ingest = new IngestionService(db, pipeline);
@@ -44,11 +45,33 @@ export function buildApp({ db, clock, baselineProvider = new FakeBaselineProvide
   const latestRisk = new Map<string, RiskAssessment>();
   const bus = new EventBus();
   const exclusions = new BaselineExclusionRepository(db);
+  const nameOf = (name: string | ((wearerId: string) => string), wearerId: string) => typeof name === 'function' ? name(wearerId) : name;
+
+  if (demoSessions?.accessToken) {
+    app.get('/join/:token', async (request, reply) => {
+      if (!demoSessions.verifyToken((request.params as { token: string }).token)) return reply.code(403).send('无效演示链接');
+      const session = demoSessions.fromCookie(request.headers.cookie) ?? demoSessions.create();
+      return reply.header('Set-Cookie', `anmai_session=${session.id}; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=86400`).header('Referrer-Policy', 'no-referrer').redirect('/');
+    });
+    app.addHook('preHandler', async (request, reply) => {
+      if (!request.url.startsWith('/api/') || request.url.startsWith('/api/health')) return;
+      if (request.url.startsWith('/api/deadlines/run')) {
+        if (request.headers['x-demo-internal'] === demoSessions.internalToken) return;
+        return reply.code(403).send({ code: 'INTERNAL_ONLY' });
+      }
+      const session = demoSessions.fromCookie(request.headers.cookie);
+      if (!session) return reply.code(401).send({ code: 'DEMO_SESSION_REQUIRED', message: '请使用评委演示链接进入' });
+      const wearerIds = [(request.params as { wearerId?: string })?.wearerId, (request.query as { wearerId?: string })?.wearerId, (request.body as { wearerId?: string } | null)?.wearerId].filter(Boolean);
+      if (wearerIds.some(id => id !== session.wearer_id)) return reply.code(403).send({ code: 'SESSION_MISMATCH', message: '此数据属于其他演示会话' });
+      const eventId = (request.params as { eventId?: string })?.eventId;
+      if (eventId && emergency.get(eventId)?.wearerId !== session.wearer_id) return reply.code(403).send({ code: 'SESSION_MISMATCH', message: '此事件属于其他演示会话' });
+    });
+  }
 
   function snapshot(wearerId: string) {
     const event = emergency.getActiveForWearer(wearerId);
     const activeBaseline = baseline.getActive(wearerId);
-    return { wearerId, risk: latestRisk.get(wearerId) ?? riskReview.getLastObservation(wearerId)?.risk ?? null, event, eventCard: event ? cards.get(event.eventId) : null, contactDeliveries: event ? emergency.getContactDeliveries(event.eventId) : [], messages: event ? messages.get(event.eventId, event.state) : null, confirmedMonitor: emergency.getMonitorState(wearerId), baseline: activeBaseline, aggregationWarning: Boolean(activeBaseline && activeBaseline.baseline.aggregationVersion !== 2), baselineState: baseline.getState(wearerId), provider: baselineProviderName, riskReview: riskReview.get(wearerId), riskReviewProvider: riskReviewProviderName, messageProvider: messageProviderName };
+    return { wearerId, risk: latestRisk.get(wearerId) ?? riskReview.getLastObservation(wearerId)?.risk ?? null, event, eventCard: event ? cards.get(event.eventId) : null, contactDeliveries: event ? emergency.getContactDeliveries(event.eventId) : [], messages: event ? messages.get(event.eventId, event.state) : null, confirmedMonitor: emergency.getMonitorState(wearerId), baseline: activeBaseline, aggregationWarning: Boolean(activeBaseline && activeBaseline.baseline.aggregationVersion !== 2), baselineState: baseline.getState(wearerId), provider: nameOf(baselineProviderName, wearerId), riskReview: riskReview.get(wearerId), riskReviewProvider: nameOf(riskReviewProviderName, wearerId), messageProvider: nameOf(messageProviderName, wearerId) };
   }
 
   function sse(event: BusEvent): string { return `id: ${event.id}\nevent: update\ndata: ${JSON.stringify(event)}\n\n`; }
@@ -74,6 +97,17 @@ export function buildApp({ db, clock, baselineProvider = new FakeBaselineProvide
   }
 
   app.get('/api/health', async () => ({ status: 'ok', demoOnly: true }));
+  app.get('/api/session', async request => ({ wearerId: demoSessions?.fromCookie(request.headers.cookie)?.wearer_id ?? 'demo-wearer', publicDemo: Boolean(demoSessions?.accessToken), ...(demoSessions?.accessToken ? demoSessions.status(demoSessions.fromCookie(request.headers.cookie)!.wearer_id) : { mode: 'fake', deepseekConfigured: false, remaining: 0 }) }));
+  app.get('/api/settings/provider-mode', async request => demoSessions?.status(demoSessions.fromCookie(request.headers.cookie)!.wearer_id) ?? { mode: 'fake', deepseekConfigured: false, remaining: 0 });
+  app.put('/api/settings/provider-mode', async (request, reply) => {
+    if (!demoSessions?.accessToken) return reply.code(409).send({ code: 'PUBLIC_DEMO_REQUIRED', message: '模型切换仅在公开演示模式启用' });
+    const mode = (request.body as { mode?: string } | null)?.mode;
+    if (mode !== 'fake' && mode !== 'deepseek') return reply.code(400).send({ code: 'INVALID_MODE', message: '请选择 Fake 或 DeepSeek' });
+    const wearerId = demoSessions.fromCookie(request.headers.cookie)!.wearer_id;
+    const result = demoSessions.switch(wearerId, mode);
+    if (result !== 'ok') return reply.code(409).send({ code: result, message: result === 'missing_key' ? '后端尚未配置 DeepSeek API Key' : result === 'quota' ? '本会话 DeepSeek 演示额度已用完' : '当前流程仍在进行，请结束后再切换' });
+    return demoSessions.status(wearerId);
+  });
   app.get('/api/settings/timers', async () => emergency.getSettings());
   app.get('/api/settings/risk-review', async () => riskReview.getSettings());
   app.put('/api/settings/risk-review', async (request, reply) => {
@@ -91,7 +125,9 @@ export function buildApp({ db, clock, baselineProvider = new FakeBaselineProvide
     try {
       const input = parseIngestRequest(request.body);
       const result = ingest.ingest(input);
-      const generated = await baseline.generatePending(input.wearerId);
+      const leave = demoSessions?.enter(input.wearerId);
+      let generated;
+      try { generated = await baseline.generatePending(input.wearerId); } finally { leave?.(); }
       bus.publish('ingestion', { wearerId: input.wearerId, result, generated });
       return { ...result, ...generated };
     }
@@ -99,11 +135,12 @@ export function buildApp({ db, clock, baselineProvider = new FakeBaselineProvide
   });
   app.get('/api/baselines/:wearerId', async (request) => {
     const { wearerId } = request.params as { wearerId: string };
-    return { state: baseline.getState(wearerId), active: baseline.getActive(wearerId), provider: baselineProviderName };
+    return { state: baseline.getState(wearerId), active: baseline.getActive(wearerId), provider: nameOf(baselineProviderName, wearerId) };
   });
   app.post('/api/baselines/:wearerId/generate', async (request) => {
     const { wearerId } = request.params as { wearerId: string };
-    return baseline.generatePending(wearerId);
+    const leave = demoSessions?.enter(wearerId);
+    try { return await baseline.generatePending(wearerId); } finally { leave?.(); }
   });
   app.post('/api/baselines/:wearerId/resume', async (request, reply) => {
     const { wearerId } = request.params as { wearerId: string };
@@ -134,7 +171,7 @@ export function buildApp({ db, clock, baselineProvider = new FakeBaselineProvide
   });
   app.post('/api/simulator/reset', async (request, reply) => {
     const body = request.body as { wearerId?: string; confirmation?: string } | null;
-    if (body?.wearerId !== 'demo-wearer' || body.confirmation !== 'RESET_DEMO_DATA') {
+    if (!body?.wearerId || (demoSessions?.accessToken ? !demoSessions.forWearer(body.wearerId) : body.wearerId !== 'demo-wearer') || body.confirmation !== 'RESET_DEMO_DATA') {
       return reply.code(400).send({ code: 'INVALID_DEMO_RESET', message: 'Demo wearer and confirmation are required' });
     }
     baseline.cancelPending(body.wearerId);

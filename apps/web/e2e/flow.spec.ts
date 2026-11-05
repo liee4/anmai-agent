@@ -1,5 +1,7 @@
 import { expect, test } from '@playwright/test';
 
+test.beforeEach(async ({ page }) => { await page.goto('/join/e2e-demo-access-token-2026-11-05-test-only'); });
+
 test('imports history, reviews ordinary risk, asks after observation, then contacts relatives', async ({ page }) => {
   await page.goto('/');
   await expect(page.getByRole('heading', { name: '监测与响应' })).toBeVisible();
@@ -76,4 +78,29 @@ test('reports a lost request and allows the next simulated sample after reconnec
   await page.getByRole('button', { name: '持续异常', exact: true }).click();
   await expect(page.locator('.monitor-panel .status')).toHaveText('持续异常');
   await expect(page.getByRole('alert')).toHaveCount(0);
+});
+
+test('isolates model modes and test data between two judges', async ({ browser }) => {
+  const first = await browser.newContext();
+  const second = await browser.newContext();
+  try {
+    const a = await first.newPage();
+    const b = await second.newPage();
+    await a.goto('/join/e2e-demo-access-token-2026-11-05-test-only');
+    await b.goto('/join/e2e-demo-access-token-2026-11-05-test-only');
+    const sessionA = await (await first.request.get('/api/session')).json();
+    const sessionB = await (await second.request.get('/api/session')).json();
+    expect(sessionA.wearerId).not.toBe(sessionB.wearerId);
+    await a.getByRole('button', { name: 'DeepSeek' }).click();
+    await expect(a.getByRole('button', { name: 'DeepSeek' })).toBeDisabled();
+    await expect(b.getByRole('button', { name: 'Fake' })).toBeDisabled();
+    await a.getByRole('button', { name: '填入下一轮 14 天数据' }).click();
+    await a.getByRole('button', { name: 'Fake' }).click();
+    await a.getByRole('button', { name: '导入并检查基线' }).click();
+    await expect(a.getByText('v1', { exact: true })).toBeVisible();
+    await a.getByRole('button', { name: 'DeepSeek' }).click();
+    await expect(a.locator('.baseline-panel')).toContainText('生成该版的模型');
+    await expect(a.locator('.baseline-panel')).toContainText('fake');
+    await expect(b.getByText('尚未生成')).toBeVisible();
+  } finally { await first.close(); await second.close(); }
 });

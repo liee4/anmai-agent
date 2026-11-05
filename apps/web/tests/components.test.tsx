@@ -7,7 +7,7 @@ import { RiskReviewStatus } from '../src/app/RiskReviewStatus.js';
 const event: EmergencyEvent = { eventId: 'demo-event-123', wearerId: 'demo-wearer', state: 'primary_contact', stateVersion: 2, createdAt: '2026-11-04T00:00:00Z', deadlineAt: '2026-11-04T00:00:30Z', timerSettings: { wearerResponseSeconds: 60, primaryRelativeSeconds: 30, otherRelativesSeconds: 30, safeRecheckSeconds: 300 }, baselineVersion: 1, location: null, risk: { level: 'worsening', score: 10, reasons: ['fixed_heart_rate_high'], assessedAt: '2026-11-04T00:00:00Z' } };
 
 it('shows model observation and keeps the wearer help control available', () => {
-  const html = renderToStaticMarkup(<RiskReviewStatus review={{ status: 'observe', provider: 'deepseek', decision: 'observe', reason: '继续复测', deadlineAt: '2026-11-04T00:00:30Z', fallbackReason: null }} provider="deepseek" risk={event.risk} seconds={12} busy={false} onHelp={() => undefined} />);
+  const html = renderToStaticMarkup(<RiskReviewStatus review={{ status: 'observe', provider: 'deepseek', decision: 'observe', reason: '继续复测', deadlineAt: '2026-11-04T00:00:30Z', fallbackReason: null }} risk={event.risk} seconds={12} busy={false} onHelp={() => undefined} />);
   expect(html).toContain('复核模型：deepseek');
   expect(html).toContain('剩余 12 秒');
   expect(html).toContain('我不舒服，需要亲属');
