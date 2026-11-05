@@ -55,4 +55,14 @@ describe('unified ingestion', () => {
     expect((db.raw.prepare('SELECT baseline_eligible FROM minute_vitals').get() as { baseline_eligible: number }).baseline_eligible).toBe(0);
     db.close();
   });
+  it('stores a minute median instead of the first sample in that minute', () => {
+    const db = openDatabase(':memory:');
+    new IngestionService(db).ingest({ inputMode: 'auto', wearerId: 'w', data: [
+      { ...sample('2026-10-28T10:30:01Z'), heartRate: 70 },
+      { ...sample('2026-10-28T10:30:02Z'), heartRate: 80 },
+      { ...sample('2026-10-28T10:30:03Z'), heartRate: 90 },
+    ] });
+    expect(db.raw.prepare('SELECT heart_rate, sample_count FROM minute_vitals WHERE wearer_id = ?').get('w')).toMatchObject({ heart_rate: 80, sample_count: 3 });
+    db.close();
+  });
 });

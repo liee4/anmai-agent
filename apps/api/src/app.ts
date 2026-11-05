@@ -4,6 +4,8 @@ import { Value } from '@sinclair/typebox/value';
 import type { Clock } from './clock.js';
 import type { DatabaseContext } from './infra/database.js';
 import { IngestionService } from './features/ingestion/ingestion-service.js';
+import { SamplePipeline, type SampleSource } from './features/ingestion/sample-pipeline.js';
+import { normalizeInput } from './features/ingestion/normalizer.js';
 import { RiskDetector, type PersonalBaseline } from './features/monitoring/risk-detector.js';
 import { EmergencyService } from './features/emergency/emergency-service.js';
 import type { EmergencyCommand } from './features/emergency/state-machine.js';
@@ -18,34 +20,53 @@ import { BaselineExclusionRepository } from './infra/repositories/baseline-exclu
 import { DailySummaryRepository } from './infra/repositories/daily-summary-repository.js';
 import { nextDemoHistory } from './features/simulator/demo-history.js';
 import { resetDemoWearer } from './features/simulator/demo-reset.js';
+import { RiskReviewService } from './features/monitoring/risk-review-service.js';
+import { FakeRiskReviewProvider } from './features/monitoring/fake-risk-review-provider.js';
+import type { RiskReviewProvider } from './features/monitoring/risk-review-provider.js';
+import { EventCardService } from './features/emergency/event-card-service.js';
+import { MessageService } from './features/agent/message-service.js';
+import { FakeMessageProvider } from './features/agent/fake-message-provider.js';
+import type { MessageProvider } from './features/agent/message-provider.js';
 
-export interface AppDependencies { db: DatabaseContext; clock: Clock; baselineProvider?: BaselineModelProvider; baselineProviderName?: string }
+export interface AppDependencies { db: DatabaseContext; clock: Clock; baselineProvider?: BaselineModelProvider; baselineProviderName?: string; riskReviewProvider?: RiskReviewProvider; riskReviewProviderName?: string; riskObservationSeconds?: number; messageProvider?: MessageProvider; messageProviderName?: string }
 
-export function buildApp({ db, clock, baselineProvider = new FakeBaselineProvider(), baselineProviderName = 'fake' }: AppDependencies): FastifyInstance {
+export function buildApp({ db, clock, baselineProvider = new FakeBaselineProvider(), baselineProviderName = 'fake', riskReviewProvider = new FakeRiskReviewProvider(), riskReviewProviderName = 'fake', riskObservationSeconds = 30, messageProvider = new FakeMessageProvider(), messageProviderName = 'fake' }: AppDependencies): FastifyInstance {
   const app = Fastify({ logger: false, bodyLimit: 10 * 1024 * 1024 });
-  const ingest = new IngestionService(db);
+  const pipeline = new SamplePipeline(db);
+  const ingest = new IngestionService(db, pipeline);
   const detector = new RiskDetector();
   const emergency = new EmergencyService(db, clock);
   const baseline = new BaselineService(db, baselineProvider, baselineProviderName);
-  const agent = new AnmaiAgent(detector, emergency);
+  const riskReview = new RiskReviewService(db, clock, riskReviewProvider, riskReviewProviderName, riskObservationSeconds);
+  const agent = new AnmaiAgent(detector, emergency, riskReview);
+  const cards = new EventCardService(db);
+  const messages = new MessageService(db, clock, messageProvider, messageProviderName);
   const latestRisk = new Map<string, RiskAssessment>();
   const bus = new EventBus();
   const exclusions = new BaselineExclusionRepository(db);
 
   function snapshot(wearerId: string) {
-    return { wearerId, risk: latestRisk.get(wearerId) ?? null, event: emergency.getActiveForWearer(wearerId), confirmedMonitor: emergency.getMonitorState(wearerId), baseline: baseline.getActive(wearerId), baselineState: baseline.getState(wearerId), provider: baselineProviderName };
+    const event = emergency.getActiveForWearer(wearerId);
+    const activeBaseline = baseline.getActive(wearerId);
+    return { wearerId, risk: latestRisk.get(wearerId) ?? riskReview.getLastObservation(wearerId)?.risk ?? null, event, eventCard: event ? cards.get(event.eventId) : null, contactDeliveries: event ? emergency.getContactDeliveries(event.eventId) : [], messages: event ? messages.get(event.eventId, event.state) : null, confirmedMonitor: emergency.getMonitorState(wearerId), baseline: activeBaseline, aggregationWarning: Boolean(activeBaseline && activeBaseline.baseline.aggregationVersion !== 2), baselineState: baseline.getState(wearerId), provider: baselineProviderName, riskReview: riskReview.get(wearerId), riskReviewProvider: riskReviewProviderName, messageProvider: messageProviderName };
   }
 
   function sse(event: BusEvent): string { return `id: ${event.id}\nevent: update\ndata: ${JSON.stringify(event)}\n\n`; }
   function visibleTo(event: BusEvent, wearerId: string): boolean { return event.type === 'deadline' || (event.data as { wearerId?: string }).wearerId === wearerId; }
 
-  async function evaluate(wearerId: string, samples: VitalSample[]) {
+  async function evaluate(wearerId: string, samples: VitalSample[], source: SampleSource = 'live') {
+    if (samples.length > 0 && source === 'live') pipeline.store(wearerId, normalizeInput({ wearerId, inputMode: 'auto', data: samples }).samples, source);
     const activeBaseline = baseline.getActive(wearerId);
     const run = await agent.handle({ kind: 'vitals', wearerId, samples, baselineVersion: activeBaseline?.version ?? null, ...(activeBaseline ? { baseline: activeBaseline.baseline as PersonalBaseline } : {}) });
     const risk = run.risk!;
+    if (run.event) {
+      cards.record(run.event.eventId, samples);
+      void messages.ensure(run.event).then(() => bus.publish('event', { wearerId, event: run.event })).catch(() => undefined);
+    }
     if ((risk.level === 'abnormal' || risk.level === 'worsening') && samples.length > 0) {
       const timestamps = samples.map(sample => new Date(sample.timestamp).toISOString()).sort();
       exclusions.excludeRange(wearerId, timestamps[0]!, timestamps[timestamps.length - 1]!, `risk_${risk.level}`);
+      if (run.event) pipeline.recordAnomaly(run.event.eventId, samples);
     }
     latestRisk.set(wearerId, risk);
     bus.publish('monitoring', { wearerId, risk, event: run.event });
@@ -54,6 +75,13 @@ export function buildApp({ db, clock, baselineProvider = new FakeBaselineProvide
 
   app.get('/api/health', async () => ({ status: 'ok', demoOnly: true }));
   app.get('/api/settings/timers', async () => emergency.getSettings());
+  app.get('/api/settings/risk-review', async () => riskReview.getSettings());
+  app.put('/api/settings/risk-review', async (request, reply) => {
+    const body = request.body as { observationSeconds?: number } | null;
+    if (!Number.isInteger(body?.observationSeconds) || body!.observationSeconds! < 1 || body!.observationSeconds! > 3600) return reply.code(400).send({ code: 'INVALID_REVIEW_TIMER', message: '观察秒数须为 1 至 3600 的整数' });
+    if (!riskReview.setObservationSeconds(body!.observationSeconds!)) return reply.code(409).send({ code: 'ACTIVE_REVIEW', message: '正在观察，不能修改本次倒计时' });
+    return riskReview.getSettings();
+  });
   app.put('/api/settings/timers', async (request, reply) => {
     if (!Value.Check(TimerSettingsSchema, request.body)) return reply.code(400).send({ code: 'INVALID_TIMERS', message: 'Four positive integer timer values are required' });
     if (!emergency.setSettings(request.body)) return reply.code(409).send({ code: 'ACTIVE_EVENT', message: 'Timer settings are locked during an active event' });
@@ -88,6 +116,22 @@ export function buildApp({ db, clock, baselineProvider = new FakeBaselineProvide
     if (!body || typeof body.wearerId !== 'string' || !Array.isArray(body.samples)) return reply.code(400).send({ code: 'INVALID_MONITOR_INPUT', message: 'wearerId and samples are required' });
     return evaluate(body.wearerId, body.samples);
   });
+  app.post('/api/monitor/help', async (request, reply) => {
+    const body = request.body as { wearerId?: string } | null;
+    if (!body?.wearerId) return reply.code(400).send({ code: 'WEARER_REQUIRED' });
+    const existing = emergency.getActiveForWearer(body.wearerId);
+    if (existing) return { event: existing };
+    const observation = riskReview.getLastObservation(body.wearerId);
+    if (!observation || !['observe', 'pending'].includes(riskReview.get(body.wearerId)?.status ?? '') || observation.risk.level !== 'abnormal') return reply.code(409).send({ code: 'NO_ACTIVE_OBSERVATION', message: '当前没有可接管的观察过程' });
+    riskReview.cancel(body.wearerId);
+    const activeBaseline = baseline.getActive(body.wearerId);
+    const alert = emergency.start(body.wearerId, observation.risk, activeBaseline?.version ?? null, observation.sample.location, activeBaseline?.baseline as PersonalBaseline ?? {});
+    const contacted = emergency.act(alert.eventId, alert.stateVersion, { kind: 'wearer_unwell' }).event!;
+    cards.record(contacted.eventId, [observation.sample]);
+    void messages.ensure(contacted).catch(() => undefined);
+    bus.publish('event', { wearerId: body.wearerId, event: contacted });
+    return { event: contacted };
+  });
   app.post('/api/simulator/reset', async (request, reply) => {
     const body = request.body as { wearerId?: string; confirmation?: string } | null;
     if (body?.wearerId !== 'demo-wearer' || body.confirmation !== 'RESET_DEMO_DATA') {
@@ -103,7 +147,7 @@ export function buildApp({ db, clock, baselineProvider = new FakeBaselineProvide
     const { scenario } = request.params as { scenario: Scenario };
     const body = request.body as { wearerId?: string };
     if (!scenarios.includes(scenario) || !body?.wearerId) return reply.code(400).send({ code: 'INVALID_SCENARIO', message: 'Known scenario and wearerId are required' });
-    return evaluate(body.wearerId, scenarioSamples(scenario, clock.now()));
+    return evaluate(body.wearerId, scenarioSamples(scenario, clock.now()), 'scenario');
   });
   app.get('/api/simulator/history/next', async (request, reply) => {
     const { wearerId } = request.query as { wearerId?: string };
@@ -133,17 +177,31 @@ export function buildApp({ db, clock, baselineProvider = new FakeBaselineProvide
     return event ?? reply.code(404).send({ code: 'EVENT_NOT_FOUND', message: 'Event not found' });
   });
   app.get('/api/events/:eventId/timeline', async (request) => emergency.getTimeline((request.params as { eventId: string }).eventId));
+  app.get('/api/events/:eventId/card', async (request, reply) => cards.get((request.params as { eventId: string }).eventId) ?? reply.code(404).send({ code: 'EVENT_NOT_FOUND' }));
+  app.get('/api/events/:eventId/contacts', async (request) => emergency.getContactDeliveries((request.params as { eventId: string }).eventId));
+  app.post('/api/events/:eventId/contacts/:contactId/actions', async (request, reply) => {
+    const { eventId, contactId } = request.params as { eventId: string; contactId: string };
+    const body = request.body as { stateVersion?: number; kind?: string } | null;
+    if (!Number.isInteger(body?.stateVersion) || !['takeover', 'decline'].includes(body?.kind ?? '')) return reply.code(400).send({ code: 'INVALID_CONTACT_ACTION' });
+    const result = emergency.respondContact(eventId, body!.stateVersion!, contactId, body!.kind as 'takeover' | 'decline');
+    if (result.ok && result.event) { bus.publish('event', { wearerId: result.event.wearerId, event: result.event }); void messages.ensure(result.event).catch(() => undefined); }
+    return reply.code(result.ok ? 200 : 409).send(result);
+  });
   app.post('/api/events/:eventId/actions', async (request, reply) => {
     const { eventId } = request.params as { eventId: string };
     const body = request.body as { stateVersion?: number; kind?: EmergencyCommand['kind'] };
     if (!Number.isInteger(body?.stateVersion) || !['wearer_unwell', 'wearer_safe', 'relative_takeover', 'relative_decline', 'worsening', 'normal_60s', 'close'].includes(body?.kind ?? '')) return reply.code(400).send({ code: 'INVALID_ACTION', message: 'Valid stateVersion and kind are required' });
     const result = await agent.handle({ kind: 'response', eventId, stateVersion: body.stateVersion!, command: { kind: body.kind! } });
-    if (result.ok && result.event) bus.publish('event', { wearerId: result.event.wearerId, event: result.event });
+    if (result.ok && result.event) { bus.publish('event', { wearerId: result.event.wearerId, event: result.event }); void messages.ensure(result.event).catch(() => undefined); }
     return reply.code(result.ok ? 200 : 409).send({ ok: result.ok, event: result.event, trace: result.trace });
   });
   app.post('/api/deadlines/run', async () => {
     const executed = (await agent.handle({ kind: 'deadline' })).executed;
     if (executed) bus.publish('deadline', { executed });
+    if (executed) for (const row of db.raw.prepare('SELECT event_id FROM emergency_events WHERE closed_at IS NULL').all() as { event_id: string }[]) {
+      const event = emergency.get(row.event_id);
+      if (event) void messages.ensure(event).catch(() => undefined);
+    }
     return { executed };
   });
   return app;

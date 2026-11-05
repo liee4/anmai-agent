@@ -2,14 +2,14 @@
 
 面向心脑血管高风险老年人的体征监测与分级响应原型。当前使用模拟体征、模拟亲属通知和模拟急救接线端；所有阈值只是比赛演示参数，不是医疗诊断标准。
 
-审查后的[修订设计方案](docs/安脉-Agent-设计方案.md)和[完整修改实施计划](docs/superpowers/plans/2026-11-04-anmai-review-remediation.md)描述下一阶段目标。文档中的 DeepSeek 主循环复核、两项 P0 修复及后续增强目前尚未写入产品代码；以下运行说明仍对应当前版本。
+[设计方案](docs/安脉-Agent-设计方案.md)和[修改实施计划](docs/superpowers/plans/2026-11-04-anmai-review-remediation.md)记录了流程及实现边界。当前代码已包含规则异常检测、普通异常模型复核、人工确认、模拟亲属接管和模拟自动呼救。真实部署前验证仍是独立工作。
 
 ## 技术栈
 
 - 前端：React、TypeScript、Vite。
 - 后端：Fastify、TypeScript、Node.js 24。
 - 数据库：本地 SQLite（`node:sqlite`），迁移脚本保存在 `apps/api/src/infra/migrations`。
-- 基线模型：可替换的 `BaselineModelProvider`；默认使用本地假 Provider，配置后可调用 DeepSeek。
+- 模型接口：可替换的基线、风险复核、事件文案三个 Provider；均默认使用本地 Fake Provider，分别可配置为 DeepSeek。
 
 ## 本地启动
 
@@ -26,30 +26,32 @@ pnpm dev
 
 ```powershell
 $env:BASELINE_PROVIDER='deepseek'
+$env:RISK_REVIEW_PROVIDER='deepseek'
+$env:MESSAGE_PROVIDER='deepseek'
 $env:DEEPSEEK_API_KEY = Read-Host '请输入 DeepSeek API Key'
 $env:DATABASE_PATH='data/deepseek-demo.sqlite'
 pnpm dev
 ```
 
-可通过 `DEEPSEEK_BASE_URL` 和 `DEEPSEEK_MODEL` 覆盖接口地址和模型名。密钥只留在本机环境变量，不要写进仓库。模型调用失败时，既有基线仍可用于检测；新软阈值不会绕过校验器发布。
+三个 Provider 可以独立选择 `fake` 或 `deepseek`，共用后端的 `DEEPSEEK_API_KEY`；可通过 `DEEPSEEK_BASE_URL` 和 `DEEPSEEK_MODEL` 覆盖接口地址和模型名。密钥只留在本机环境变量，不要写进仓库。风险复核失败或超时时直接询问佩戴者；文案生成失败时使用固定模板；基线候选最多生成五次，仍不合格则不发布。
 现场接入步骤见 [演示操作](docs/demo-runbook.md)。
 
 ## 演示流程
 
 1. 点击“填入下一轮 14 天数据”，然后点击“导入并检查基线”。每轮成功导入后，按钮会根据已保存的日期准备下一个 14 天周期，并调整模拟体征；未导入时重复点击仍是当前待导入周期。系统自动识别为历史数据，按本地日期拆分，保存每日统计；满足 14 天周期与有效日条件后调用基线 Provider。若要演示逐日积累，也可通过同一个输入口每天传入一份数据。
-2. 点击“持续异常”。异常检测器根据近 10 秒稳定值、近 30 秒持续性、个性化软阈值与固定演示阈值发起佩戴者询问。
-3. 点击“我没事”：当前事件关闭，后台记录已确认异常，同级异常暂不重复询问；持续 5 分钟可复查一次，明显恶化立即新建事件并联系主要亲属。
+2. 点击“持续异常”。规则检测使用按时间覆盖的秒桶，避免高频采样冒充 30 秒持续异常。有有效基线的普通异常交给风险复核 Provider；模型只可建议立即询问或观察一次，默认观察 30 秒。没有有效基线或模型失败时直接询问。
+3. 观察期间可直接点击“我不舒服，需要亲属”；观察到期仍异常会询问佩戴者。点击“我没事”后，当前事件关闭，后台继续检测；同级异常暂不重复询问，持续异常可按设定时间复查一次，明显恶化立即联系主要亲属。
 4. 重新触发异常并点击“我不舒服，需要亲属”：系统立即联系主要亲属，暂停基线学习；亲属可接管或拒绝。无人接管时进入模拟急救接线端并播报模拟脚本，不会拨打真实电话。
-5. 可在没有活跃事件时修改佩戴者、主要亲属、其他亲属及复查计时。事件创建时保留本次计时快照。
+5. 可在没有活跃事件或风险复核时修改模型观察、佩戴者、主要亲属、其他亲属及复查计时。已开始的观察和事件保留各自的截止时间；模型观察设置在 API 重启后恢复为环境变量默认值。
 
 数据和事件写入 SQLite，页面刷新和 API 重启后仍可读取。基线学习暂停后，必须在事件结束时由佩戴者点击“我已恢复，重新开启基线学习”。
 
 ## 主要模块
 
-- `apps/api/src/features/ingestion`：统一输入识别、逐日与历史 Adapter、归一化和每日统计。
+- `apps/api/src/features/ingestion`：统一输入识别、逐日与历史 Adapter、实时样本处理、质量检查、分钟中位数及异常片段审计。
 - `apps/api/src/features/baseline`：14 天周期、观察基线、60/30/10 记忆证据、模型 Provider、逐字段校验与最多五次生成。
-- `apps/api/src/features/monitoring`：可解释的实时风险检测。固定演示阈值独立配置，不由模型修改。
-- `apps/api/src/features/emergency`：佩戴者回应、亲属分阶段接管、持久化截止时间与已确认异常监测。
+- `apps/api/src/features/monitoring`：可解释的实时风险检测与有边界的模型复核。固定演示阈值独立配置，不由模型修改。
+- `apps/api/src/features/emergency`：佩戴者回应、逐联系人模拟送达与接管、持久化截止时间、事件卡与已确认异常监测。
 - `apps/api/src/features/agent`：观察体征或用户操作，调用有类型校验的工具，读取执行结果。关键升级使用确定性状态机。
 - `apps/web`：统一演示界面和模拟接线端。
 
@@ -59,7 +61,10 @@ pnpm dev
 pnpm test
 pnpm typecheck
 pnpm build
+pnpm e2e
 pnpm verify
 ```
+
+`pnpm verify` 包含单元、API、Web 组件、类型、构建和隔离 SQLite 的浏览器端到端测试。旧数据库中已发布的基线若依据旧版分钟聚合，页面会显示提示；演示新算法前可在页面重置测试数据并重新导入。
 
 当前实现为可运行的流程原型。真实穿戴设备接入、亲属消息通道、拨打急救电话、临床阈值验证和个人信息合规处理均不在这版模拟范围内。

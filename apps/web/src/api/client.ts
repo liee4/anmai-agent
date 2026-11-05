@@ -1,10 +1,10 @@
-import type { EmergencyEvent, RiskAssessment, TimerSettings } from '@anmai/contracts';
+import type { ContactDelivery, EmergencyEvent, EventCard, EventMessages, RiskAssessment, RiskReviewSnapshot, TimerSettings } from '@anmai/contracts';
 
 export interface BaselineView {
   version: number;
   cycleId: string;
   publishedAt: string;
-  baseline: { observations?: { context: string; hours: number; heartRate?: { median: number }; spo2?: { median: number } }[]; values?: Record<string, number>; provider?: string; evidenceWeights?: { current: number; recent: number[]; longTerm: number } };
+  baseline: { observations?: { context: string; hours: number; heartRate?: { median: number }; spo2?: { median: number } }[]; values?: Record<string, number>; provider?: string; aggregationVersion?: number; evidenceWeights?: { current: number; recent: number[]; longTerm: number } };
 }
 export interface Dashboard {
   wearerId: string;
@@ -12,8 +12,15 @@ export interface Dashboard {
   event: EmergencyEvent | null;
   confirmedMonitor: { confirmedAt: string; recheckAt: string; recheckCount: number } | null;
   baseline: BaselineView | null;
+  aggregationWarning: boolean;
   baselineState: { status: string; pausedAt: string | null; reason: string | null };
   provider: string;
+  riskReviewProvider: string;
+  riskReview: RiskReviewSnapshot | null;
+  eventCard: EventCard | null;
+  contactDeliveries: ContactDelivery[];
+  messages: EventMessages | null;
+  messageProvider: string;
 }
 
 async function json<T>(path: string, options?: RequestInit): Promise<T> {
@@ -30,9 +37,12 @@ export const api = {
   ingest: (payload: unknown) => json<{ detectedMode: string; coveredDays: number; successfulDays: number; invalidDays: number; completedCycles: number; modelCalls: number; baselineVersion: number | null }>('/api/ingest', { method: 'POST', body: JSON.stringify(payload) }),
   scenario: (wearerId: string, scenario: string) => json<{ risk: RiskAssessment; event: EmergencyEvent | null }>(`/api/simulator/${scenario}`, { method: 'POST', body: JSON.stringify({ wearerId }) }),
   action: (event: EmergencyEvent, kind: string) => json<{ ok: boolean; event: EmergencyEvent }>(`/api/events/${event.eventId}/actions`, { method: 'POST', body: JSON.stringify({ stateVersion: event.stateVersion, kind }) }),
+  help: (wearerId: string) => json<{ event: EmergencyEvent }>('/api/monitor/help', { method: 'POST', body: JSON.stringify({ wearerId }) }),
   resume: (wearerId: string) => json<{ resumed: boolean }>(`/api/baselines/${encodeURIComponent(wearerId)}/resume`, { method: 'POST' }),
   deadlines: () => json<{ executed: number }>('/api/deadlines/run', { method: 'POST' }),
   timers: () => json<TimerSettings>('/api/settings/timers'),
   setTimers: (settings: TimerSettings) => json<TimerSettings>('/api/settings/timers', { method: 'PUT', body: JSON.stringify(settings) }),
+  riskReviewTimer: () => json<{ observationSeconds: number }>('/api/settings/risk-review'),
+  setRiskReviewTimer: (observationSeconds: number) => json<{ observationSeconds: number }>('/api/settings/risk-review', { method: 'PUT', body: JSON.stringify({ observationSeconds }) }),
   timeline: (eventId: string) => json<{ at: string; kind: string; detail: string }[]>(`/api/events/${eventId}/timeline`),
 };

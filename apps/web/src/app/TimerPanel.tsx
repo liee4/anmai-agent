@@ -11,14 +11,15 @@ const fields: { key: keyof TimerSettings; label: string }[] = [
 
 export function TimerPanel() {
   const [settings, setSettings] = useState<TimerSettings | null>(null);
+  const [observationSeconds, setObservationSeconds] = useState<number | null>(null);
   const [message, setMessage] = useState('');
-  useEffect(() => { void api.timers().then(setSettings).catch(error => setMessage(String(error))); }, []);
+  useEffect(() => { void Promise.all([api.timers(), api.riskReviewTimer()]).then(([timers, review]) => { setSettings(timers); setObservationSeconds(review.observationSeconds); }).catch(error => setMessage(String(error))); }, []);
 
   async function save() {
-    if (!settings) return;
-    try { setSettings(await api.setTimers(settings)); setMessage('已保存。新事件将使用这组时间。'); }
+    if (!settings || observationSeconds === null) return;
+    try { await api.setRiskReviewTimer(observationSeconds); setSettings(await api.setTimers(settings)); setMessage('已保存。新复核或事件将使用这组时间。'); }
     catch (error) { setMessage(error instanceof Error ? error.message : String(error)); }
   }
 
-  return <div className="timer-panel"><h3>演示等待时间</h3><div className="timer-fields">{fields.map(field => <label key={field.key}>{field.label}<span><input type="number" min="1" max="3600" value={settings?.[field.key] ?? ''} onChange={event => setSettings(previous => previous ? { ...previous, [field.key]: Number(event.target.value) } : previous)}/> 秒</span></label>)}</div><button disabled={!settings} onClick={() => void save()}>保存等待时间</button>{message && <p role="status">{message}</p>}</div>;
+  return <div className="timer-panel"><h3>演示等待时间</h3><div className="timer-fields"><label>模型短时观察<span><input type="number" min="1" max="3600" value={observationSeconds ?? ''} onChange={event => setObservationSeconds(Number(event.target.value))}/> 秒</span></label>{fields.map(field => <label key={field.key}>{field.label}<span><input type="number" min="1" max="3600" value={settings?.[field.key] ?? ''} onChange={event => setSettings(previous => previous ? { ...previous, [field.key]: Number(event.target.value) } : previous)}/> 秒</span></label>)}</div><button disabled={!settings || observationSeconds === null} onClick={() => void save()}>保存等待时间</button>{message && <p role="status">{message}</p>}</div>;
 }

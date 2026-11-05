@@ -7,16 +7,19 @@ import { EmergencyRepository } from '../../infra/repositories/emergency-reposito
 import { createEvent, reduceEmergencyState, type EmergencyCommand } from './state-machine.js';
 import type { PersonalBaseline } from '../monitoring/risk-detector.js';
 import { BaselineExclusionRepository } from '../../infra/repositories/baseline-exclusion-repository.js';
+import { NotificationService } from './notification-service.js';
 
 export const defaultTimerSettings: TimerSettings = { wearerResponseSeconds: 60, primaryRelativeSeconds: 30, otherRelativesSeconds: 30, safeRecheckSeconds: 300 };
 
 export class EmergencyService {
   private readonly events: EmergencyRepository;
   private readonly deadlines: DeadlineRepository;
+  private readonly notifications: NotificationService;
 
   constructor(private readonly db: DatabaseContext, private readonly clock: Clock, private settings: TimerSettings = defaultTimerSettings) {
     this.events = new EmergencyRepository(db);
     this.deadlines = new DeadlineRepository(db);
+    this.notifications = new NotificationService(db, clock);
   }
 
   getSettings(): TimerSettings { return { ...this.settings }; }
@@ -52,6 +55,10 @@ export class EmergencyService {
   observeActiveRisk(event: EmergencyEvent, risk: RiskAssessment): EmergencyEvent {
     const now = this.clock.now().toISOString();
     const row = this.db.raw.prepare('SELECT normal_since FROM event_health_state WHERE event_id = ?').get(event.eventId) as { normal_since: string | null } | undefined;
+    const previous = this.getLastObservedRisk(event.eventId);
+    if (risk.level === 'worsening' && (previous?.level !== 'worsening' || risk.reasons.some(reason => reason.startsWith('fixed_') && !previous.reasons.includes(reason)))) {
+      this.appendTimeline(event.eventId, 'risk_worsened', JSON.stringify({ score: risk.score, reasons: risk.reasons }));
+    }
     const normalSince = risk.level === 'normal' ? row?.normal_since ?? now : null;
     this.db.raw.prepare('INSERT INTO event_health_state(event_id, last_risk_json, normal_since) VALUES (?, ?, ?) ON CONFLICT(event_id) DO UPDATE SET last_risk_json = excluded.last_risk_json, normal_since = excluded.normal_since').run(event.eventId, JSON.stringify(risk), normalSince);
     if (event.state === 'wearer_alert' && normalSince && Date.parse(now) - Date.parse(normalSince) >= 10_000) {
@@ -59,6 +66,11 @@ export class EmergencyService {
     }
     if (row?.normal_since === null && risk.level === 'normal' && event.state !== 'wearer_alert') this.appendTimeline(event.eventId, 'vitals_recovered', '当前体征已恢复，等待亲属接管');
     return event;
+  }
+
+  getLastObservedRisk(eventId: string): RiskAssessment | null {
+    const row = this.db.raw.prepare('SELECT last_risk_json FROM event_health_state WHERE event_id = ?').get(eventId) as { last_risk_json: string } | undefined;
+    return row ? JSON.parse(row.last_risk_json) as RiskAssessment : null;
   }
 
   setSettings(settings: TimerSettings): boolean {
@@ -89,6 +101,31 @@ export class EmergencyService {
     });
   }
 
+  getContactDeliveries(eventId: string) { return this.notifications.list(eventId); }
+
+  respondContact(eventId: string, expectedVersion: number, contactId: string, action: 'takeover' | 'decline'): { ok: boolean; event: EmergencyEvent | null } {
+    return this.db.transaction(() => {
+      const event = this.get(eventId);
+      if (!event || event.stateVersion !== expectedVersion || !['primary_contact', 'other_contacts', 'simulated_call'].includes(event.state)) return { ok: false, event };
+      if (action === 'decline' && event.state === 'simulated_call') return { ok: false, event };
+      const delivery = this.notifications.list(eventId).find(item => item.contactId === contactId && item.status === 'delivered' && (action === 'takeover' || item.phase === event.state));
+      if (!delivery) return { ok: false, event };
+      if (action === 'takeover') {
+        const result = this.act(eventId, expectedVersion, { kind: 'relative_takeover' });
+        if (result.ok) {
+          this.db.raw.prepare("UPDATE contact_deliveries SET status='delivered' WHERE event_id=? AND phase=? AND status='taken_over'").run(eventId, event.state);
+          this.notifications.mark(eventId, contactId, 'taken_over');
+          this.appendTimeline(eventId, 'contact_takeover', contactId);
+        }
+        return result;
+      }
+      this.notifications.mark(eventId, contactId, 'declined');
+      this.appendTimeline(eventId, 'contact_declined', contactId);
+      if (this.notifications.allFailed(eventId, event.state as 'primary_contact' | 'other_contacts')) return this.act(eventId, expectedVersion, { kind: 'relative_decline' });
+      return { ok: true, event };
+    });
+  }
+
   act(eventId: string, expectedVersion: number, command: EmergencyCommand): { ok: boolean; event: EmergencyEvent | null } {
     return this.db.transaction(() => {
       const current = this.events.get(eventId);
@@ -103,7 +140,7 @@ export class EmergencyService {
       const result = this.events.transition(eventId, expectedVersion, next.state, next.deadlineAt);
       if (!result.ok) return result;
       this.appendTimeline(eventId, command.kind, `状态更新为 ${next.state}`);
-      this.recordSimulation(current, result.event, command);
+      const allContactDeliveriesFailed = this.recordSimulation(current, result.event, command);
       if (command.kind === 'wearer_unwell') {
         this.db.raw.prepare("INSERT INTO baseline_state(wearer_id, status, paused_at, pause_reason) VALUES (?, 'paused', ?, 'wearer_unwell') ON CONFLICT(wearer_id) DO UPDATE SET status = 'paused', paused_at = excluded.paused_at, pause_reason = excluded.pause_reason").run(current.wearerId, this.clock.now().toISOString());
         new BaselineExclusionRepository(this.db).excludeRange(current.wearerId, current.createdAt, this.clock.now().toISOString(), 'wearer_unwell');
@@ -114,11 +151,13 @@ export class EmergencyService {
       }
       this.deadlines.cancelForEvent(eventId);
       this.schedule(result.event);
+      if (allContactDeliveriesFailed) return this.act(eventId, result.event!.stateVersion, { kind: 'relative_decline' });
       return result;
     });
   }
 
   runDue(): number {
+    this.notifications.retryDue();
     let executed = 0;
     for (const deadline of this.deadlines.listDue(this.clock.now().toISOString())) {
       this.db.transaction(() => {
@@ -143,18 +182,21 @@ export class EmergencyService {
     this.deadlines.schedule({ id: randomUUID(), eventId: event.eventId, kind: event.state, dueAt: event.deadlineAt });
   }
 
-  private recordSimulation(previous: EmergencyEvent, current: EmergencyEvent, command: EmergencyCommand): void {
+  private recordSimulation(previous: EmergencyEvent, current: EmergencyEvent, command: EmergencyCommand): boolean {
     const recipient = previous.state === 'primary_contact' ? 'primary-relative' : previous.state === 'other_contacts' ? 'other-relatives' : null;
     if (recipient && (command.kind === 'relative_decline' || command.kind === 'deadline' || command.kind === 'relative_takeover')) {
       const status = command.kind === 'relative_takeover' ? 'taken_over' : command.kind === 'deadline' ? 'timeout' : 'declined';
       this.db.raw.prepare('UPDATE simulated_deliveries SET status = ? WHERE idempotency_key = ?').run(status, `${previous.eventId}:${recipient}`);
+      this.notifications.markPhase(previous.eventId, previous.state as 'primary_contact' | 'other_contacts', status);
     }
     const nextRecipient = current.state === 'primary_contact' && previous.state !== 'primary_contact' ? 'primary-relative' : current.state === 'other_contacts' && previous.state !== 'other_contacts' ? 'other-relatives' : current.state === 'simulated_call' && previous.state !== 'simulated_call' ? 'emergency-simulator' : null;
-    if (!nextRecipient) return;
+    if (!nextRecipient) return false;
     const kind = nextRecipient === 'emergency-simulator' ? 'simulated_call' : 'relative_notification';
     const payload = { wearerId: current.wearerId, eventId: current.eventId, location: current.location, risk: current.risk, simulated: true };
     const inserted = this.db.raw.prepare('INSERT OR IGNORE INTO simulated_deliveries(idempotency_key, event_id, recipient, kind, status, payload_json, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)').run(`${current.eventId}:${nextRecipient}`, current.eventId, nextRecipient, kind, 'delivered', JSON.stringify(payload), this.clock.now().toISOString());
     if (inserted.changes) this.appendTimeline(current.eventId, kind, nextRecipient === 'primary-relative' ? '已向主要亲属发送模拟通知' : nextRecipient === 'other-relatives' ? '已向其他亲属发送模拟通知' : '已发起模拟急救电话，不连接真实服务');
+    if (current.state === 'primary_contact' || current.state === 'other_contacts') return this.notifications.notify(current, current.state);
+    return false;
   }
 
   private appendTimeline(eventId: string, kind: string, detail: string): void {

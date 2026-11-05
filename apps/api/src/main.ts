@@ -3,10 +3,14 @@ import { openDatabase } from './infra/database.js';
 import { SystemClock } from './clock.js';
 import { buildApp } from './app.js';
 import { createBaselineProvider } from './features/baseline/provider-registry.js';
+import { createRiskReviewProvider } from './features/monitoring/risk-review-registry.js';
+import { createMessageProvider } from './features/agent/message-registry.js';
 
 const db = openDatabase(process.env.DATABASE_PATH ?? join(process.cwd(), 'data', 'anmai.sqlite'));
 const configuredProvider = createBaselineProvider();
-const app = buildApp({ db, clock: new SystemClock(), baselineProvider: configuredProvider.provider, baselineProviderName: configuredProvider.name });
+const configuredRiskReview = createRiskReviewProvider();
+const configuredMessages = createMessageProvider();
+const app = buildApp({ db, clock: new SystemClock(), baselineProvider: configuredProvider.provider, baselineProviderName: configuredProvider.name, riskReviewProvider: configuredRiskReview.provider, riskReviewProviderName: configuredRiskReview.name, riskObservationSeconds: Number(process.env.RISK_OBSERVATION_SECONDS ?? 30), messageProvider: configuredMessages.provider, messageProviderName: configuredMessages.name });
 const interval = setInterval(async () => { await app.inject({ method: 'POST', url: '/api/deadlines/run' }); }, 1000);
 
 for (const signal of ['SIGINT', 'SIGTERM'] as const) {

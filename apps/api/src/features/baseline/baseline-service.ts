@@ -10,6 +10,7 @@ import { blendThresholdEvidence, evidenceWeights } from './memory-assembler.js';
 import { buildObservationBaseline, type BaselineReading } from './observation-baseline.js';
 import { assembleLongTermMemory } from './long-term-summary.js';
 import { BaselineExclusionRepository } from '../../infra/repositories/baseline-exclusion-repository.js';
+import { summarizeOlderCycle, loadOlderCycleMemory } from './older-cycle-summary.js';
 
 export interface PublishedBaseline {
   [key: string]: unknown;
@@ -20,6 +21,7 @@ export interface PublishedBaseline {
   provider: string;
   longTermSummary: string | null;
   longTermContributors: number[];
+  aggregationVersion: number;
 }
 
 function allowedRanges(observations: ObservationBaseline[]): Record<string, [number, number]> {
@@ -78,6 +80,7 @@ export class BaselineService {
     const cycles = buildCycles(this.summaries.list(wearerId)).filter(cycle => cycle.eligible);
     let modelCalls = 0;
     if (this.getState(wearerId).status !== 'paused') {
+      this.refreshOlderCycles(wearerId, cycles);
       const pending = cycles.filter(cycle => !this.wasProcessed(wearerId, cycle.id)).slice(-4);
       for (const cycle of pending) {
         if ((this.resetEpochs.get(wearerId) ?? 0) !== epoch) break;
@@ -91,9 +94,21 @@ export class BaselineService {
     return Boolean(this.db.raw.prepare('SELECT 1 FROM baseline_versions WHERE wearer_id = ? AND cycle_id = ? UNION ALL SELECT 1 FROM baseline_attempts WHERE wearer_id = ? AND cycle_id = ? LIMIT 1').get(wearerId, cycleId, wearerId, cycleId));
   }
 
+  private refreshOlderCycles(wearerId: string, cycles: BaselineCycle[]): void {
+    const cutoff = new Date(Date.now() - 365 * 86_400_000).toISOString().slice(0, 10);
+    const older = cycles.slice(0, -4).filter(cycle => cycle.endDate >= cutoff && !this.wasProcessed(wearerId, cycle.id));
+    this.db.transaction(() => {
+      this.db.raw.prepare('DELETE FROM older_cycle_summaries WHERE wearer_id = ?').run(wearerId);
+      for (const cycle of older) {
+        const facts = summarizeOlderCycle(this.db, cycle);
+        this.db.raw.prepare('INSERT INTO older_cycle_summaries(wearer_id,cycle_id,start_date,end_date,valid_days,facts_json) VALUES (?,?,?,?,?,?)').run(wearerId, facts.cycleId, facts.startDate, facts.endDate, facts.validDays, JSON.stringify(facts.values));
+      }
+    });
+  }
+
   private async generateCycle(cycle: BaselineCycle, epoch: number): Promise<number> {
     const exclusionRevision = this.exclusions.revision(cycle.wearerId);
-    const { request, contributors } = this.makeRequest(cycle);
+    const { request, contributors, aggregationVersion } = this.makeRequest(cycle);
     if (request.observations.length === 0 || Object.keys(request.allowedRanges).length === 0) return 0;
     const prior = this.getActive(cycle.wearerId);
     const priorValues = (prior?.baseline as Partial<PublishedBaseline> | undefined)?.values ?? {};
@@ -111,15 +126,16 @@ export class BaselineService {
         if (result.summaryAccepted && prior) this.baselines.updateActiveMemory(cycle.wearerId, result.longTermSummary, contributors);
         return;
       }
-      const baseline: PublishedBaseline = { observations: request.observations, values: result.values, evidenceWeights: evidenceWeights(request.recentBaselines.length, request.longTermSummary !== null), attempts: result.attempts, provider: this.providerName, longTermSummary: result.longTermSummary, longTermContributors: contributors };
+      const baseline: PublishedBaseline = { observations: request.observations, values: result.values, evidenceWeights: evidenceWeights(request.recentBaselines.length, request.longTermSummary !== null), attempts: result.attempts, provider: this.providerName, longTermSummary: result.longTermSummary, longTermContributors: contributors, aggregationVersion };
       this.baselines.publish({ wearerId: cycle.wearerId, version: this.baselines.nextVersion(cycle.wearerId), cycleId: cycle.id, publishedAt, baseline });
     });
     return result.attempts.length;
   }
 
-  private makeRequest(cycle: BaselineCycle): { request: BaselineGenerationRequest; contributors: number[] } {
+  private makeRequest(cycle: BaselineCycle): { request: BaselineGenerationRequest; contributors: number[]; aggregationVersion: number } {
     const eligibleDates = new Set(cycle.days.filter(day => day.baselineEligible).map(day => day.date));
-    const rows = this.db.raw.prepare('SELECT minute_at, local_date, context, heart_rate, spo2, systolic_bp, diastolic_bp, baseline_eligible FROM minute_vitals WHERE wearer_id = ? ORDER BY minute_at').all(cycle.wearerId) as { minute_at: string; local_date: string; context: BaselineReading['context']; heart_rate: number | null; spo2: number | null; systolic_bp: number | null; diastolic_bp: number | null; baseline_eligible: number }[];
+    const rows = this.db.raw.prepare('SELECT minute_at, local_date, context, heart_rate, spo2, systolic_bp, diastolic_bp, baseline_eligible, aggregation_version FROM minute_vitals WHERE wearer_id = ? ORDER BY minute_at').all(cycle.wearerId) as { minute_at: string; local_date: string; context: BaselineReading['context']; heart_rate: number | null; spo2: number | null; systolic_bp: number | null; diastolic_bp: number | null; baseline_eligible: number; aggregation_version: number }[];
+    const aggregationVersion = Math.min(...rows.filter(row => eligibleDates.has(row.local_date) && row.baseline_eligible === 1).map(row => row.aggregation_version));
     const readings: BaselineReading[] = rows.filter(row => eligibleDates.has(row.local_date)).map(row => ({ minuteAt: row.minute_at, context: row.context, baselineEligible: row.baseline_eligible === 1, ...(row.heart_rate === null ? {} : { heartRate: row.heart_rate }), ...(row.spo2 === null ? {} : { spo2: row.spo2 }), ...(row.systolic_bp === null ? {} : { systolicBP: row.systolic_bp }), ...(row.diastolic_bp === null ? {} : { diastolicBP: row.diastolic_bp }) }));
     const observations = Object.values(buildObservationBaseline(readings));
     const history = this.baselines.listRetained(cycle.wearerId, new Date().toISOString());
@@ -127,11 +143,13 @@ export class BaselineService {
     const initialMemory = assembleLongTermMemory(history);
     const priorText = active?.longTermContributors?.every(version => initialMemory.olderVersions.includes(version)) ? active.longTermSummary ?? null : null;
     const memory = assembleLongTermMemory(history, priorText);
+    const olderCycles = loadOlderCycleMemory(this.db, cycle.wearerId);
     const recent = memory.recent;
-    const longTermSummary = memory.summary;
+    const longTermSummary = memory.summary && olderCycles.summary ? JSON.stringify({ historicalBaselines: JSON.parse(memory.summary), olderCycles: JSON.parse(olderCycles.summary) }) : memory.summary ?? olderCycles.summary;
     const weights = evidenceWeights(recent.length, longTermSummary !== null);
     const baseRanges = allowedRanges(observations);
-    const weightedEvidence = blendThresholdEvidence(baseRanges, recent.map(item => (item.baseline.values ?? {}) as Record<string, number>), memory.numericFacts, weights);
+    const historicalFacts = { ...olderCycles.numericFacts, ...memory.numericFacts };
+    const weightedEvidence = blendThresholdEvidence(baseRanges, recent.map(item => (item.baseline.values ?? {}) as Record<string, number>), historicalFacts, weights);
     const constrainedRanges = Object.fromEntries(Object.entries(baseRanges).map(([field, range]) => {
       const center = weightedEvidence[field]!;
       const spread = field.includes('spo2') ? 2 : 15;
@@ -149,8 +167,8 @@ export class BaselineService {
       evidenceWeights: { current: weights.current, recent: weights.recent.reduce((sum, weight) => sum + weight, 0), longTerm: weights.longTerm },
       weightedEvidence,
       allowedRanges: constrainedRanges,
-      evidenceRefs: [cycle.id, ...recent.map(item => item.cycleId ?? `version:${item.version}`), ...(memory.olderVersions.length ? [`longterm:${memory.olderVersions.join('-')}`] : [])],
+      evidenceRefs: [cycle.id, ...recent.map(item => item.cycleId ?? `version:${item.version}`), ...(memory.olderVersions.length ? [`longterm:${memory.olderVersions.join('-')}`] : []), ...olderCycles.cycleIds.map(id => `oldercycle:${id}`)],
     };
-    return { request, contributors: memory.olderVersions };
+    return { request, contributors: memory.olderVersions, aggregationVersion: Number.isFinite(aggregationVersion) ? aggregationVersion : 1 };
   }
 }

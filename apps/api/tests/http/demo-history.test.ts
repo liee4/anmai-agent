@@ -12,6 +12,7 @@ it('prepares a different 14-day demo set after each completed import', async () 
   expect(first.json().data[0]).toMatchObject({ timestamp: '2026-10-01T00:00:00.000Z', heartRate: 76 });
   const firstImport = await app.inject({ method: 'POST', url: '/api/ingest', payload: first.json() });
   expect(firstImport.json()).toMatchObject({ coveredDays: 14, duplicateSamples: 0, baselineVersion: 1 });
+  expect((await app.inject({ method: 'GET', url: '/api/dashboard/w' })).json()).toMatchObject({ aggregationWarning: false, baseline: { baseline: { aggregationVersion: 2 } } });
 
   const second = await app.inject({ method: 'GET', url: '/api/simulator/history/next?wearerId=w' });
   expect(second.json().data[0]).toMatchObject({ timestamp: '2026-10-15T00:00:00.000Z' });

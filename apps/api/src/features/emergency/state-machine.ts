@@ -30,7 +30,7 @@ function determineNextState(state: EventState, kind: EmergencyCommand['kind']): 
     if (kind === 'deadline') return 'wearer_alert';
     if (kind === 'normal_60s') return 'closed';
   }
-  if (state === 'primary_contact' && (kind === 'deadline' || kind === 'relative_decline')) return 'other_contacts';
+  if (state === 'primary_contact' && (kind === 'deadline' || kind === 'relative_decline' || kind === 'worsening')) return 'other_contacts';
   if (state === 'other_contacts' && (kind === 'deadline' || kind === 'relative_decline')) return 'simulated_call';
   return null;
 }

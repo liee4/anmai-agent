@@ -31,4 +31,10 @@ describe('emergency state machine', () => {
     expect([primary.state, others.state, call.state]).toEqual(['primary_contact', 'other_contacts', 'simulated_call']);
     expect(reduceEmergencyState(others, { kind: 'relative_decline' }, now).state).toBe('simulated_call');
   });
+
+  it('escalates from the primary relative to the others when risk worsens', () => {
+    const alert = createEvent('event-1', 'wearer-1', risk, settings, now);
+    const primary = reduceEmergencyState(alert, { kind: 'wearer_unwell' }, now);
+    expect(reduceEmergencyState(primary, { kind: 'worsening' }, now).state).toBe('other_contacts');
+  });
 });

@@ -9,6 +9,17 @@ const start = new Date('2026-10-28T10:00:00Z');
 const reading = (timestamp: string, heartRate = 112) => ({ timestamp, heartRate, spo2: 97, activity: 'resting' });
 
 describe('baseline exclusion after risk assessment', () => {
+  it('persists live samples and an abnormal snippet in the common sample pipeline', async () => {
+    const db = openDatabase(':memory:');
+    const app = buildApp({ db, clock: new FakeClock(start) });
+    const samples = Array.from({ length: 35 }, (_, index) => reading(new Date(start.getTime() + index * 1000).toISOString()));
+    const assessed = (await app.inject({ method: 'POST', url: '/api/monitor/evaluate', payload: { wearerId: 'w', samples } })).json();
+    expect(assessed.risk.level).toBe('abnormal');
+    expect(db.raw.prepare('SELECT COUNT(*) AS count FROM ingested_samples WHERE wearer_id = ?').get('w')).toMatchObject({ count: 35 });
+    expect(db.raw.prepare('SELECT COUNT(*) AS count FROM anomaly_snippets WHERE event_id = ?').get(assessed.event.eventId)).toMatchObject({ count: 35 });
+    expect(db.raw.prepare('SELECT baseline_eligible FROM minute_vitals WHERE wearer_id = ?').get('w')).toMatchObject({ baseline_eligible: 0 });
+    await app.close(); db.close();
+  });
   it('excludes soft abnormal monitoring data imported after the assessment', async () => {
     const db = openDatabase(':memory:');
     const app = buildApp({ db, clock: new FakeClock(start) });

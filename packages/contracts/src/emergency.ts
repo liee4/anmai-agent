@@ -16,3 +16,12 @@ export const TimelineEntrySchema = Type.Object({ id: Type.String(), eventId: Typ
 export type TimelineEntry = Static<typeof TimelineEntrySchema>;
 export const EmergencyEventSchema = Type.Object({ eventId: Type.String(), wearerId: Type.String(), state: EventStateSchema, stateVersion: Type.Integer({ minimum: 1 }), createdAt: TimestampSchema, deadlineAt: Type.Union([TimestampSchema, Type.Null()]), timerSettings: TimerSettingsSchema, baselineVersion: Type.Union([Type.Integer({ minimum: 1 }), Type.Null()]), baselineSnapshot: Type.Optional(Type.Any()), location: Type.Union([LocationSchema, Type.Null()]), risk: RiskAssessmentSchema }, { additionalProperties: false });
 export type EmergencyEvent = Static<typeof EmergencyEventSchema>;
+export interface ContactDelivery {
+  contactId: string;
+  role: 'primary' | 'other';
+  label: string;
+  phase: 'primary_contact' | 'other_contacts';
+  status: 'delivered' | 'delivery_failed' | 'declined' | 'taken_over' | 'timeout';
+  attempts: number;
+  retryAt: string | null;
+}

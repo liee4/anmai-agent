@@ -1,6 +1,7 @@
 import type { RiskAssessment, VitalSample } from '@anmai/contracts';
 import { demoThresholds } from './detection-config.js';
 import { median } from './sliding-window.js';
+import { secondVitals } from './second-window.js';
 
 type Context = 'resting' | 'activity' | 'night';
 interface Metric { median: number; mad: number }
@@ -25,10 +26,12 @@ export class RiskDetector {
     if (!latest || !usable(latest) || ordered.slice(-10).some(sample => !usable(sample))) return { level: 'untrusted_data', score: 0, reasons: ['device_untrusted_or_invalid'], assessedAt };
 
     const latestMs = Date.parse(latest.timestamp);
-    const stable = ordered.filter(sample => latestMs - Date.parse(sample.timestamp) < 10_000 && usable(sample));
-    if (stable.length < 5) return { level: 'untrusted_data', score: 0, reasons: ['insufficient_recent_samples'], assessedAt };
-    const heartRate = median(stable.map(sample => sample.heartRate!))!;
-    const spo2 = median(stable.map(sample => sample.spo2!))!;
+    const seconds = secondVitals(ordered, usable);
+    const latestSecond = Math.floor(latestMs / 1000) * 1000;
+    const stable = seconds.filter(sample => latestSecond - sample.at < 10_000);
+    if (stable.length < 5 || stable.some((sample, index) => index > 0 && sample.at - stable[index - 1]!.at > demoThresholds.maxRecentGapSeconds * 1000)) return { level: 'untrusted_data', score: 0, reasons: ['insufficient_recent_samples'], assessedAt };
+    const heartRate = median(stable.map(sample => sample.heartRate))!;
+    const spo2 = median(stable.map(sample => sample.spo2))!;
     const freshBP = ordered.filter(sample => latestMs - Date.parse(sample.timestamp) <= 30 * 60_000 && sample.systolicBP !== undefined && sample.diastolicBP !== undefined && usable(sample));
     const lastBP = freshBP.at(-1);
     const fixedReasons = [heartRate > demoThresholds.heartRateUpper && 'fixed_heart_rate_high', heartRate < demoThresholds.heartRateLower && 'fixed_heart_rate_low', spo2 < demoThresholds.spo2Lower && 'fixed_spo2_low', lastBP && lastBP.systolicBP! > demoThresholds.systolicBPUpper && 'fixed_systolic_high', lastBP && lastBP.systolicBP! < demoThresholds.systolicBPLower && 'fixed_systolic_low'].filter((reason): reason is string => typeof reason === 'string');
@@ -47,16 +50,17 @@ export class RiskDetector {
     const heartFlag = heartSoft || heartDeviation >= 3;
     const oxygenFlag = oxygenSoft || oxygenDeviation >= 3;
 
-    const flags = ordered.filter(sample => latestMs - Date.parse(sample.timestamp) < 30_000).map(sample => {
-      const instant = Date.parse(sample.timestamp);
-      const window = ordered.filter(item => instant - Date.parse(item.timestamp) >= 0 && instant - Date.parse(item.timestamp) < 10_000 && usable(item));
-      if (window.length < 5) return { at: instant, abnormal: false };
-      const hr = median(window.map(item => item.heartRate!))!;
-      const oxygen = median(window.map(item => item.spo2!))!;
-      return { at: instant, abnormal: hr > upper || hr < lower || oxygen < oxygenLower || deviation(hr, observation?.heartRate, 3) >= 3 || deviation(oxygen, observation?.spo2, 1) >= 3 };
+    const bySecond = new Map(seconds.map(sample => [sample.at, sample]));
+    const flags = Array.from({ length: demoThresholds.persistenceSeconds }, (_, index) => {
+      const instant = latestSecond - (demoThresholds.persistenceSeconds - 1 - index) * 1000;
+      if (!bySecond.has(instant)) return false;
+      const window = seconds.filter(item => instant - item.at >= 0 && instant - item.at < demoThresholds.windowSeconds * 1000);
+      if (window.length < 5) return false;
+      const hr = median(window.map(item => item.heartRate))!;
+      const oxygen = median(window.map(item => item.spo2))!;
+      return hr > upper || hr < lower || oxygen < oxygenLower || deviation(hr, observation?.heartRate, 3) >= 3 || deviation(oxygen, observation?.spo2, 1) >= 3;
     });
-    const span = flags.length ? flags.at(-1)!.at - flags[0]!.at : 0;
-    const persistent = span >= 29_000 && flags.filter(flag => flag.abnormal).length >= demoThresholds.abnormalSeconds && flags.slice(-5).length === 5 && flags.slice(-5).every(flag => flag.abnormal);
+    const persistent = flags.filter(Boolean).length >= demoThresholds.abnormalSeconds && flags.slice(-demoThresholds.endingConsecutiveSeconds).every(Boolean);
 
     const bpUpper = values[`${context}.systolicBPWarningUpper`] ?? 140;
     const bpSoft = freshBP.length >= 2 && (() => {

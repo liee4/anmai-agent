@@ -5,6 +5,7 @@ import type { EmergencyService } from '../emergency/emergency-service.js';
 import type { EmergencyCommand } from '../emergency/state-machine.js';
 import type { RiskDetector, PersonalBaseline } from '../monitoring/risk-detector.js';
 import { ToolRegistry } from './tool-registry.js';
+import type { RiskReviewService } from '../monitoring/risk-review-service.js';
 
 export type AgentTrigger =
   | { kind: 'vitals'; wearerId: string; samples: VitalSample[]; baselineVersion?: number | null; baseline?: PersonalBaseline }
@@ -15,7 +16,7 @@ export interface AgentRunResult { risk: RiskAssessment | null; event: EmergencyE
 export class AnmaiAgent {
   private readonly tools = new ToolRegistry();
 
-  constructor(detector: RiskDetector, private readonly emergency: EmergencyService) {
+  constructor(detector: RiskDetector, private readonly emergency: EmergencyService, private readonly review?: RiskReviewService) {
     this.tools.register('evaluate_risk', Type.Object({ samples: Type.Array(VitalSampleSchema), baseline: Type.Optional(Type.Any()) }), async input => detector.evaluate(input.samples, input.baseline as PersonalBaseline | undefined));
     this.tools.register('create_alert', Type.Object({ wearerId: Type.String(), risk: RiskAssessmentSchema, baselineVersion: Type.Union([Type.Integer(), Type.Null()]), baseline: Type.Optional(Type.Any()), location: Type.Optional(Type.Union([Type.Object({ name: Type.String(), latitude: Type.Number(), longitude: Type.Number() }), Type.Null()])) }), async input => emergency.start(input.wearerId, input.risk, input.baselineVersion, input.location ?? undefined, (input.baseline ?? {}) as PersonalBaseline), input => input.risk.level === 'abnormal' || input.risk.level === 'worsening');
     this.tools.register('record_response', Type.Object({ eventId: Type.String(), stateVersion: Type.Integer(), kind: Type.String() }), async input => emergency.act(input.eventId, input.stateVersion, { kind: input.kind as EmergencyCommand['kind'] }), input => {
@@ -32,16 +33,30 @@ export class AnmaiAgent {
       const current = this.emergency.getActiveForWearer(trigger.wearerId);
       const risk = await this.tools.execute<RiskAssessment>('evaluate_risk', { samples: trigger.samples, baseline: current?.baselineSnapshot ?? trigger.baseline }, {});
       trace.push('assess:risk');
+      if (this.review && (risk.level === 'normal' || risk.level === 'worsening')) await this.review.assess(trigger.wearerId, risk, trigger.samples, trigger.baselineVersion ?? null, trigger.baseline ?? {});
+      const previousRisk = current ? this.emergency.getLastObservedRisk(current.eventId) : null;
       const active = current ? this.emergency.observeActiveRisk(current, risk) : null;
       if (active?.state === 'closed') {
         trace.push('decide:recovered', 'act:close_alert', 'observe:event');
         return { risk, event: null, ok: true, executed: 2, trace };
       }
-      if (active?.state === 'wearer_alert' && risk.level === 'worsening' && active.risk.level !== 'worsening') {
+      const newlyWorsened = risk.level === 'worsening' && (previousRisk?.level !== 'worsening' || risk.reasons.some(reason => reason.startsWith('fixed_') && !previousRisk.reasons.includes(reason)));
+      if (active && newlyWorsened && (active.state === 'wearer_alert' || active.state === 'safe_recheck' || active.state === 'primary_contact')) {
         trace.push('decide:worsening');
         const changed = await this.tools.execute<{ ok: boolean; event: EmergencyEvent | null }>('record_response', { eventId: active.eventId, stateVersion: active.stateVersion, kind: 'worsening' }, {});
-        trace.push('act:contact_primary', 'observe:event');
+        trace.push(active.state === 'primary_contact' ? 'act:contact_others' : 'act:contact_primary', 'observe:event');
         return { risk, event: changed.event, ok: changed.ok, executed: 2, trace };
+      }
+      if (active) {
+        trace.push('decide:active_monitor', 'observe:event');
+        return { risk, event: active, ok: true, executed: 1, trace };
+      }
+      if (this.review && risk.level === 'abnormal') {
+        const reviewed = await this.review.assess(trigger.wearerId, risk, trigger.samples, trigger.baselineVersion ?? null, trigger.baseline ?? {});
+        trace.push(`assess:model_${reviewed.action}`);
+        const concurrentEvent = this.emergency.getActiveForWearer(trigger.wearerId);
+        if (concurrentEvent || reviewed.action === 'stale') return { risk, event: concurrentEvent, ok: true, executed: 1, trace };
+        if (reviewed.action === 'observe') return { risk, event: null, ok: true, executed: 1, trace };
       }
       const monitor = active ? 'new' : this.emergency.observeRisk(trigger.wearerId, risk);
       if (monitor === 'suppress') {
@@ -55,7 +70,7 @@ export class AnmaiAgent {
       trace.push(monitor === 'recheck' ? 'decide:one_recheck' : 'decide:wearer_alert');
       const event = await this.tools.execute<EmergencyEvent>('create_alert', { wearerId: trigger.wearerId, risk, baselineVersion: trigger.baselineVersion ?? null, baseline: trigger.baseline, location: trigger.samples.at(-1)?.location ?? null }, {});
       trace.push('act:create_alert', 'observe:event');
-      if (monitor === 'worsening') {
+      if (monitor === 'worsening' || risk.level === 'worsening') {
         const contacted = await this.tools.execute<{ ok: boolean; event: EmergencyEvent | null }>('record_response', { eventId: event.eventId, stateVersion: event.stateVersion, kind: 'worsening' }, {});
         trace.push('act:contact_primary', 'observe:event');
         return { risk, event: contacted.event, ok: contacted.ok, executed: 3, trace };

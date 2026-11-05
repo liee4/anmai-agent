@@ -9,7 +9,7 @@ function migrationSql(file: string): string {
 
 export function migrate(database: DatabaseSync): void {
   database.exec('CREATE TABLE IF NOT EXISTS schema_migrations (version INTEGER PRIMARY KEY, applied_at TEXT NOT NULL)');
-  for (const [version, file] of [[1, '001_initial.sql'], [2, '002_baseline_retention.sql'], [3, '003_wearer_monitor_state.sql'], [4, '004_local_day.sql'], [5, '005_event_health_state.sql'], [6, '006_simulated_delivery.sql'], [7, '007_baseline_exclusions.sql']] as const) {
+  for (const [version, file] of [[1, '001_initial.sql'], [2, '002_baseline_retention.sql'], [3, '003_wearer_monitor_state.sql'], [4, '004_local_day.sql'], [5, '005_event_health_state.sql'], [6, '006_simulated_delivery.sql'], [7, '007_baseline_exclusions.sql'], [8, '008_minute_aggregation.sql'], [9, '009_risk_review.sql'], [10, '010_older_cycle_summary.sql'], [11, '011_demo_contacts.sql'], [12, '012_event_card_messages.sql']] as const) {
     if (database.prepare('SELECT 1 FROM schema_migrations WHERE version = ?').get(version)) continue;
     database.exec('BEGIN IMMEDIATE');
     try {

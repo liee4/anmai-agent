@@ -43,4 +43,33 @@ describe('risk detector', () => {
   it('uses an approved personal warning threshold', () => {
     expect(detector.evaluate(samples(35, 112), { values: { 'resting.heartRateWarningUpper': 115 } }).level).toBe('normal');
   });
+
+  it('does not turn 870 ms of dense abnormal readings into 24 abnormal seconds', () => {
+    const start = Date.UTC(2026, 9, 28, 10, 0, 0);
+    const oldNormal = Array.from({ length: 5 }, (_, index) => ({ timestamp: new Date(start + index * 100).toISOString(), heartRate: 78, spo2: 97, activity: 'resting' as const }));
+    const denseAbnormal = Array.from({ length: 30 }, (_, index) => ({ timestamp: new Date(start + 29_000 + index * 30).toISOString(), heartRate: 112, spo2: 97, activity: 'resting' as const }));
+    expect(detector.evaluate([...oldNormal, ...denseAbnormal]).level).toBe('untrusted_data');
+  });
+
+  it('requires the final five distinct seconds to be abnormal', () => {
+    const stream = samples(35, 112).filter((_, index) => index !== 33);
+    expect(detector.evaluate(stream).level).toBe('normal');
+  });
+
+  it('does not treat one second of dense fixed-threshold readings as a stable value', () => {
+    const start = Date.UTC(2026, 9, 28, 10, 0, 0);
+    const dense = Array.from({ length: 10 }, (_, index) => ({ timestamp: new Date(start + index * 80).toISOString(), heartRate: 140, spo2: 90, activity: 'resting' as const }));
+    expect(detector.evaluate(dense).level).toBe('untrusted_data');
+  });
+
+  it('treats a large gap in the recent sampling cadence as untrusted', () => {
+    const stream = samples(10, 140).filter((_, index) => [0, 1, 2, 8, 9].includes(index));
+    expect(detector.evaluate(stream).level).toBe('untrusted_data');
+  });
+
+  it('does not trust contradictory heart rates within one second', () => {
+    const stream = samples(5, 78);
+    stream.push({ ...stream[4]!, timestamp: new Date(Date.UTC(2026, 9, 28, 10, 0, 4, 500)).toISOString(), heartRate: 220 });
+    expect(detector.evaluate(stream).level).toBe('untrusted_data');
+  });
 });

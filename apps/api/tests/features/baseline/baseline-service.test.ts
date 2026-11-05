@@ -23,6 +23,7 @@ describe('baseline cycle service', () => {
     expect(first.modelCalls).toBe(1);
     expect(first.baselineVersion).toBe(1);
     expect(service.getActive('w')?.baseline.observations).toHaveLength(1);
+    expect(service.getActive('w')?.baseline.aggregationVersion).toBe(1);
     const again = await service.generatePending('w');
     expect(again.modelCalls).toBe(0);
     expect(again.baselineVersion).toBe(1);
@@ -75,6 +76,27 @@ describe('baseline cycle service', () => {
     expect(service.getActive('w')).toBeNull();
     expect(db.raw.prepare('SELECT COUNT(*) AS count FROM baseline_attempts WHERE wearer_id = ?').get('w')).toMatchObject({ count: 0 });
     expect((await service.generatePending('w')).baselineVersion).toBe(1);
+    db.close();
+  });
+
+  it('summarizes the oldest cycle when one import contains more than four eligible cycles', async () => {
+    const db = openDatabase(':memory:');
+    const summaries = new DailySummaryRepository(db);
+    const start = Date.UTC(2026, 7, 1);
+    for (let day = 0; day < 70; day++) {
+      const at = start + day * 86_400_000;
+      const date = new Date(at).toISOString().slice(0, 10);
+      summaries.upsert({ wearerId: 'w', date, coverageHours: 8, qualityRate: 1, restingHours: 2, baselineEligible: true, exclusionReasons: [] });
+      for (let minute = 0; minute < 60; minute++) db.raw.prepare('INSERT INTO minute_vitals(wearer_id, minute_at, context, heart_rate, spo2, systolic_bp, diastolic_bp, sample_count, baseline_eligible, exclusion_reasons_json, local_date) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)').run('w', new Date(at + 3_600_000 + minute * 60_000).toISOString(), 'resting', 76 + Math.floor(day / 14), 97, null, null, 1, 1, '[]', date);
+    }
+    const fake = new FakeBaselineProvider();
+    const requests: Parameters<FakeBaselineProvider['generateCandidate']>[0][] = [];
+    const service = new BaselineService(db, { generateCandidate: async request => { requests.push(request); return fake.generateCandidate(request); } });
+    const result = await service.generatePending('w');
+    expect(result).toMatchObject({ completedCycles: 5, modelCalls: 4, baselineVersion: 1 });
+    expect(requests[0]?.longTermSummary).toContain('w:2026-08-01');
+    expect(requests[0]?.evidenceWeights.longTerm).toBe(0.1);
+    expect(db.raw.prepare('SELECT COUNT(*) AS count FROM older_cycle_summaries WHERE wearer_id = ?').get('w')).toMatchObject({ count: 1 });
     db.close();
   });
 });
