@@ -17,6 +17,7 @@ describe('baseline exclusion after risk assessment', () => {
     expect(assessed.risk.level).toBe('abnormal');
     expect(db.raw.prepare('SELECT COUNT(*) AS count FROM ingested_samples WHERE wearer_id = ?').get('w')).toMatchObject({ count: 35 });
     expect(db.raw.prepare('SELECT COUNT(*) AS count FROM anomaly_snippets WHERE event_id = ?').get(assessed.event.eventId)).toMatchObject({ count: 35 });
+    expect(db.raw.prepare("SELECT COUNT(*) AS count FROM risk_sample_audit WHERE wearer_id = ? AND reason = 'risk_abnormal'").get('w')).toMatchObject({ count: 35 });
     expect(db.raw.prepare('SELECT baseline_eligible FROM minute_vitals WHERE wearer_id = ?').get('w')).toMatchObject({ baseline_eligible: 0 });
     await app.close(); db.close();
   });

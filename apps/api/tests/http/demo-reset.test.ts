@@ -20,7 +20,7 @@ it('resets only the demo wearer and restarts its baseline sequence at v1', async
   expect((await app.inject({ method: 'GET', url: '/api/dashboard/demo-wearer' })).json().baseline.version).toBe(1);
   expect((await app.inject({ method: 'POST', url: '/api/simulator/reset', payload: resetPayload })).json()).toEqual({ reset: true });
   expect((await app.inject({ method: 'GET', url: '/api/dashboard/demo-wearer' })).json()).toMatchObject({ baseline: null, event: null, risk: null, baselineState: { status: 'active' } });
-  for (const table of ['ingested_samples', 'minute_vitals', 'daily_summaries', 'baseline_state', 'baseline_versions', 'baseline_attempts', 'baseline_exclusions', 'emergency_events', 'wearer_monitor_state']) {
+  for (const table of ['ingested_samples', 'minute_vitals', 'daily_summaries', 'baseline_state', 'baseline_versions', 'baseline_attempts', 'baseline_exclusions', 'risk_sample_audit', 'emergency_events', 'wearer_monitor_state']) {
     expect(db.raw.prepare(`SELECT COUNT(*) AS count FROM ${table} WHERE wearer_id = ?`).get('demo-wearer')).toMatchObject({ count: 0 });
   }
   expect(db.raw.prepare('SELECT COUNT(*) AS count FROM event_timeline WHERE event_id = ?').get(alert.eventId)).toMatchObject({ count: 0 });

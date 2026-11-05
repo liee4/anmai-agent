@@ -26,6 +26,13 @@ describe('risk detector', () => {
     expect(detector.evaluate(samples(35, 112)).level).toBe('abnormal');
     expect(detector.evaluate(samples(35, 112).map(sample => ({ ...sample, activity: 'activity' }))).level).toBe('normal');
   });
+  it('escalates when a second vital stays abnormal during activity', () => {
+    const stream = samples(35, 120, 93).map(sample => ({ ...sample, activity: 'activity' as const }));
+    expect(detector.evaluate(stream)).toMatchObject({
+      level: 'worsening',
+      reasons: expect.arrayContaining(['heart_rate_persistent', 'spo2_persistent', 'multiple_vitals']),
+    });
+  });
   it('checks a fresh fixed blood-pressure boundary immediately', () => {
     const stream: VitalSample[] = samples(30, 78);
     stream[29] = { ...stream[29]!, systolicBP: 190, diastolicBP: 110 };

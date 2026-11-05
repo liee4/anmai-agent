@@ -76,7 +76,7 @@ export class RiskDetector {
     if (persistent && oxygenFlag) { score += Number(oxygenSoft) + Number(oxygenDeviation >= 3); reasons.push('spo2_persistent'); }
     if (bpSoft) { score++; reasons.push('blood_pressure_confirmed_twice'); }
     if (score && context !== 'activity') { score++; reasons.push('rest_or_night'); }
-    if (reasons.filter(reason => reason.endsWith('_persistent') || reason === 'blood_pressure_confirmed_twice').length >= 2) { score += 2; reasons.push('multiple_vitals'); }
+    if (reasons.filter(reason => reason.endsWith('_persistent') || reason === 'blood_pressure_confirmed_twice').length >= 2) { score = Math.max(score + 2, 5); reasons.push('multiple_vitals'); }
     return { level: score >= 5 ? 'worsening' : 'abnormal', score: Math.max(score, 2), reasons, assessedAt };
   }
 }

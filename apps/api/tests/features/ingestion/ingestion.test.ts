@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { openDatabase } from '../../../src/infra/database.js';
 import { IngestionService } from '../../../src/features/ingestion/ingestion-service.js';
 import { DailySummaryRepository } from '../../../src/infra/repositories/daily-summary-repository.js';
+import { BaselineRepository } from '../../../src/infra/repositories/baseline-repository.js';
 
 const sample = (timestamp: string) => ({ timestamp, heartRate: 78, spo2: 97, activity: 'resting' as const });
 
@@ -63,6 +64,60 @@ describe('unified ingestion', () => {
       { ...sample('2026-10-28T10:30:03Z'), heartRate: 90 },
     ] });
     expect(db.raw.prepare('SELECT heart_rate, sample_count FROM minute_vitals WHERE wearer_id = ?').get('w')).toMatchObject({ heart_rate: 80, sample_count: 3 });
+    db.close();
+  });
+
+  it('excludes and audits a sustained historical soft anomaly against an existing baseline without raising a live alert', () => {
+    const db = openDatabase(':memory:');
+    const wearerId = 'w';
+    new BaselineRepository(db).publish({ wearerId, version: 1, cycleId: 'w:2026-10-01', publishedAt: '2026-10-28T00:00:00Z', baseline: { values: { 'resting.heartRateWarningUpper': 105 } } });
+    const start = Date.parse('2026-10-28T10:00:00Z');
+    const abnormal = Array.from({ length: 35 }, (_, index) => ({ ...sample(new Date(start + index * 1000).toISOString()), heartRate: 112 }));
+    const input = { inputMode: 'auto' as const, wearerId, data: [...abnormal, sample('2026-10-29T10:00:00Z')] };
+
+    const service = new IngestionService(db);
+    expect(service.ingest(input).detectedMode).toBe('historical');
+    expect(db.raw.prepare("SELECT baseline_eligible FROM minute_vitals WHERE wearer_id = ? AND minute_at = '2026-10-28T10:00:00Z'").get(wearerId)).toMatchObject({ baseline_eligible: 0 });
+    expect(db.raw.prepare("SELECT reason FROM baseline_exclusions WHERE wearer_id = ?").all(wearerId)).toEqual([{ reason: 'risk_abnormal' }]);
+    const auditCount = (db.raw.prepare("SELECT COUNT(*) AS count FROM risk_sample_audit WHERE wearer_id = ? AND reason = 'risk_abnormal'").get(wearerId) as { count: number }).count;
+    expect(auditCount).toBeGreaterThan(0);
+    expect(service.ingest(input).duplicateSamples).toBe(input.data.length);
+    expect(db.raw.prepare("SELECT COUNT(*) AS count FROM risk_sample_audit WHERE wearer_id = ? AND reason = 'risk_abnormal'").get(wearerId)).toMatchObject({ count: auditCount });
+    expect(db.raw.prepare('SELECT COUNT(*) AS count FROM emergency_events').get()).toMatchObject({ count: 0 });
+    db.close();
+  });
+
+  it('finds a sustained soft anomaly across two daily imports', () => {
+    const db = openDatabase(':memory:');
+    const wearerId = 'w';
+    new BaselineRepository(db).publish({ wearerId, version: 1, cycleId: 'w:2026-10-01', publishedAt: '2026-10-28T00:00:00Z', baseline: { values: { 'resting.heartRateWarningUpper': 105 } } });
+    const start = Date.parse('2026-10-28T10:00:00Z');
+    const data = Array.from({ length: 40 }, (_, index) => ({ ...sample(new Date(start + index * 1000).toISOString()), heartRate: 112 }));
+    const service = new IngestionService(db);
+    service.ingest({ inputMode: 'daily', wearerId, data: data.slice(0, 20) });
+    expect(db.raw.prepare('SELECT baseline_eligible FROM minute_vitals WHERE wearer_id = ?').get(wearerId)).toMatchObject({ baseline_eligible: 1 });
+    service.ingest({ inputMode: 'daily', wearerId, data: data.slice(20) });
+    expect(db.raw.prepare('SELECT baseline_eligible FROM minute_vitals WHERE wearer_id = ?').get(wearerId)).toMatchObject({ baseline_eligible: 0 });
+    db.close();
+  });
+
+  it('keeps non-acute historical variation available for first-time personalization', () => {
+    const db = openDatabase(':memory:');
+    const start = Date.parse('2026-10-28T10:00:00Z');
+    const data = Array.from({ length: 35 }, (_, index) => ({ ...sample(new Date(start + index * 1000).toISOString()), heartRate: 112 }));
+    new IngestionService(db).ingest({ inputMode: 'daily', wearerId: 'w', data });
+    expect(db.raw.prepare('SELECT baseline_eligible FROM minute_vitals WHERE wearer_id = ?').get('w')).toMatchObject({ baseline_eligible: 1 });
+    db.close();
+  });
+
+  it('rolls back an imported batch if risk auditing fails', () => {
+    const db = openDatabase(':memory:');
+    new BaselineRepository(db).publish({ wearerId: 'w', version: 1, cycleId: 'w:2026-10-01', publishedAt: '2026-10-28T00:00:00Z', baseline: { values: { 'resting.heartRateWarningUpper': 105 } } });
+    db.raw.exec("CREATE TRIGGER reject_risk_audit BEFORE INSERT ON risk_sample_audit BEGIN SELECT RAISE(ABORT, 'audit write failed'); END");
+    const start = Date.parse('2026-10-28T10:00:00Z');
+    const data = Array.from({ length: 35 }, (_, index) => ({ ...sample(new Date(start + index * 1000).toISOString()), heartRate: 112 }));
+    expect(() => new IngestionService(db).ingest({ inputMode: 'daily', wearerId: 'w', data })).toThrow('audit write failed');
+    expect(db.raw.prepare('SELECT COUNT(*) AS count FROM ingested_samples WHERE wearer_id = ?').get('w')).toMatchObject({ count: 0 });
     db.close();
   });
 });

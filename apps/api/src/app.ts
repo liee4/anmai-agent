@@ -16,7 +16,6 @@ import { scenarioSamples, scenarios, type Scenario } from './features/simulator/
 import type { RiskAssessment } from '@anmai/contracts';
 import { AnmaiAgent } from './features/agent/anmai-agent.js';
 import { EventBus, type BusEvent } from './infra/event-bus.js';
-import { BaselineExclusionRepository } from './infra/repositories/baseline-exclusion-repository.js';
 import { DailySummaryRepository } from './infra/repositories/daily-summary-repository.js';
 import { nextDemoHistory } from './features/simulator/demo-history.js';
 import { resetDemoWearer } from './features/simulator/demo-reset.js';
@@ -44,7 +43,6 @@ export function buildApp({ db, clock, baselineProvider = new FakeBaselineProvide
   const messages = new MessageService(db, clock, messageProvider, messageProviderName);
   const latestRisk = new Map<string, RiskAssessment>();
   const bus = new EventBus();
-  const exclusions = new BaselineExclusionRepository(db);
   const nameOf = (name: string | ((wearerId: string) => string), wearerId: string) => typeof name === 'function' ? name(wearerId) : name;
 
   if (demoSessions?.accessToken) {
@@ -87,8 +85,7 @@ export function buildApp({ db, clock, baselineProvider = new FakeBaselineProvide
       void messages.ensure(run.event).then(() => bus.publish('event', { wearerId, event: run.event })).catch(() => undefined);
     }
     if ((risk.level === 'abnormal' || risk.level === 'worsening') && samples.length > 0) {
-      const timestamps = samples.map(sample => new Date(sample.timestamp).toISOString()).sort();
-      exclusions.excludeRange(wearerId, timestamps[0]!, timestamps[timestamps.length - 1]!, `risk_${risk.level}`);
+      pipeline.auditRisk(wearerId, samples, source, risk);
       if (run.event) pipeline.recordAnomaly(run.event.eventId, samples);
     }
     latestRisk.set(wearerId, risk);
