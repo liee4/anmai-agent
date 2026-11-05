@@ -9,7 +9,7 @@
 5. 评委在页面“演示模型”处点 DeepSeek，之后新开始的基线、异常复核与事件文案任务使用你的后端 Key。已有基线与事件不会重算。当前有活跃事件或模型复核时，先完成流程再切换。点 Fake 可回到离线演示。
 6. 用另一台设备通过评委链接完整试跑：导入 14 天数据、切换 DeepSeek、再导入下一周期以触发真实基线调用、触发普通异常查看复核 Provider。检查 Railway 日志和 DeepSeek 账户用量。若 Key 未配置、请求失败或演示额度用尽，页面会给出状态或安全回退；不要把回退结果说成真实模型结果。
 
-Railway 的服务、持久化卷与 DeepSeek API 用量可能产生费用。公开演示只使用模拟体征、模拟联系人和模拟呼救。访问凭证应只发给评委；如需撤销旧链接，在 Railway 更换 `DEMO_ACCESS_TOKEN` 并重新部署。Railway 账户创建、支付、真实 Key 填写与生成域名由账户持有人在平台完成。
+Railway 新账户可先使用试用额度；试用期或额度结束后，持续运行取决于账户方案与用量。Railway 当前说明试用卷默认 0.5 GB，试用额度到期后若不升级，卷中的数据可能被删除；比赛前应检查账户状态和预计使用时间。[Railway 试用说明](https://docs.railway.com/pricing/free-trial)、[卷限制](https://docs.railway.com/volumes/reference)。DeepSeek API 用量另行计算。公开演示只使用模拟体征、模拟联系人和模拟呼救。访问凭证应只发给评委；如需撤销旧链接，在 Railway 更换 `DEMO_ACCESS_TOKEN` 并重新部署。Railway 账户创建、支付、真实 Key 填写与生成域名由账户持有人在平台完成。
 
 ## 准备
 
