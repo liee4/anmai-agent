@@ -1,25 +1,26 @@
 /* Restrained frosted-glass treatment for the guided demonstration. */
 :root {
   --ground: #eaf2f2;
-  --surface: rgba(255, 255, 255, .78);
-  --raised: rgba(255, 255, 255, .55);
+  --surface: rgba(255, 255, 255, .62);
+  --raised: rgba(255, 255, 255, .42);
   --border: rgba(49, 91, 98, .18);
   --rule: rgba(49, 91, 98, .13);
   --text: #17292d;
   --muted: #4d6268;
   --accent: #17647a;
-  --glass-panel: rgba(255, 255, 255, .68);
-  --glass-inset: rgba(255, 255, 255, .46);
-  --glass-edge: rgba(255, 255, 255, .86);
-  --glass-shadow: 0 12px 34px rgba(30, 69, 75, .075);
+  --glass-panel: rgba(255, 255, 255, .53);
+  --glass-inset: rgba(255, 255, 255, .34);
+  --glass-edge: rgba(255, 255, 255, .78);
+  --glass-shadow: 0 14px 36px rgba(30, 69, 75, .09);
 }
 
 body {
   background-color: #eaf2f2;
   background-image:
-    radial-gradient(circle at 8% 4%, rgba(143, 205, 208, .43), transparent 32%),
-    radial-gradient(circle at 94% 19%, rgba(178, 205, 226, .38), transparent 29%),
-    radial-gradient(circle at 45% 94%, rgba(196, 225, 211, .32), transparent 36%);
+    radial-gradient(circle at 8% 4%, rgba(125, 198, 204, .57), transparent 34%),
+    radial-gradient(circle at 93% 18%, rgba(155, 195, 227, .53), transparent 31%),
+    radial-gradient(circle at 27% 62%, rgba(145, 208, 195, .3), transparent 34%),
+    radial-gradient(circle at 71% 90%, rgba(180, 213, 231, .31), transparent 35%);
   background-attachment: fixed;
   color: var(--text);
 }
@@ -55,8 +56,8 @@ button:hover:not(:disabled) {
   background: var(--glass-panel);
   border: 1px solid var(--glass-edge);
   box-shadow: var(--glass-shadow);
-  -webkit-backdrop-filter: blur(18px) saturate(115%);
-  backdrop-filter: blur(18px) saturate(115%);
+  -webkit-backdrop-filter: blur(24px) saturate(120%);
+  backdrop-filter: blur(24px) saturate(120%);
 }
 
 .demo-header {
@@ -82,7 +83,7 @@ button:hover:not(:disabled) {
 .scenario-grid button,
 .baseline-strip-actions button:not(.primary),
 .guided-actions button:not(.primary) {
-  background: rgba(255, 255, 255, .62);
+  background: rgba(255, 255, 255, .52);
 }
 
 .journey-options button.active,
@@ -106,7 +107,7 @@ button:hover:not(:disabled) {
 }
 
 .demo-flow > div {
-  background: rgba(255, 255, 255, .58);
+  background: rgba(255, 255, 255, .46);
   border: 1px solid rgba(255, 255, 255, .82);
   border-radius: 10px;
   box-shadow: 0 5px 18px rgba(30, 69, 75, .045);
@@ -173,8 +174,8 @@ button:hover:not(:disabled) {
   .guided-main,
   .guided-aside,
   .advanced-details {
-    -webkit-backdrop-filter: blur(12px);
-    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(16px);
+    backdrop-filter: blur(16px);
   }
   .demo-flow { gap: 5px; }
 }
