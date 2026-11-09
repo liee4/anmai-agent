@@ -1,0 +1,190 @@
+/* Restrained frosted-glass treatment for the guided demonstration. */
+:root {
+  --ground: #eaf2f2;
+  --surface: rgba(255, 255, 255, .78);
+  --raised: rgba(255, 255, 255, .55);
+  --border: rgba(49, 91, 98, .18);
+  --rule: rgba(49, 91, 98, .13);
+  --text: #17292d;
+  --muted: #4d6268;
+  --accent: #17647a;
+  --glass-panel: rgba(255, 255, 255, .68);
+  --glass-inset: rgba(255, 255, 255, .46);
+  --glass-edge: rgba(255, 255, 255, .86);
+  --glass-shadow: 0 12px 34px rgba(30, 69, 75, .075);
+}
+
+body {
+  background-color: #eaf2f2;
+  background-image:
+    radial-gradient(circle at 8% 4%, rgba(143, 205, 208, .43), transparent 32%),
+    radial-gradient(circle at 94% 19%, rgba(178, 205, 226, .38), transparent 29%),
+    radial-gradient(circle at 45% 94%, rgba(196, 225, 211, .32), transparent 36%);
+  background-attachment: fixed;
+  color: var(--text);
+}
+
+button,
+.timer-fields input,
+.baseline-manual textarea {
+  background: rgba(255, 255, 255, .75);
+  border-color: rgba(53, 94, 102, .3);
+  color: var(--text);
+}
+
+button:hover:not(:disabled) {
+  background: rgba(255, 255, 255, .96);
+  border-color: rgba(23, 100, 122, .48);
+}
+
+.primary,
+.primary:hover:not(:disabled) {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+.primary:hover:not(:disabled) { background: #115469; }
+
+.demo-header,
+.journeys,
+.baseline-strip,
+.guided-main,
+.guided-aside,
+.advanced-details {
+  background: var(--glass-panel);
+  border: 1px solid var(--glass-edge);
+  box-shadow: var(--glass-shadow);
+  -webkit-backdrop-filter: blur(18px) saturate(115%);
+  backdrop-filter: blur(18px) saturate(115%);
+}
+
+.demo-header {
+  padding: 11px 16px;
+  border-radius: 12px;
+  margin-bottom: 25px;
+}
+
+.journeys,
+.baseline-strip,
+.guided-main,
+.guided-aside,
+.advanced-details { border-radius: 14px; }
+
+.demo-title > span {
+  padding: 6px 9px;
+  border: 1px solid rgba(23, 100, 122, .17);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, .42);
+}
+
+.journey-options button,
+.scenario-grid button,
+.baseline-strip-actions button:not(.primary),
+.guided-actions button:not(.primary) {
+  background: rgba(255, 255, 255, .62);
+}
+
+.journey-options button.active,
+.journey-options button.active:hover:not(:disabled) {
+  background: rgba(222, 242, 244, .88);
+  border-color: rgba(23, 100, 122, .52);
+  color: #104e60;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .8);
+}
+
+.scenario-grid button:hover:not(:disabled) {
+  background: rgba(235, 250, 249, .87);
+}
+
+.demo-flow {
+  gap: 7px;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  overflow: visible;
+}
+
+.demo-flow > div {
+  background: rgba(255, 255, 255, .58);
+  border: 1px solid rgba(255, 255, 255, .82);
+  border-radius: 10px;
+  box-shadow: 0 5px 18px rgba(30, 69, 75, .045);
+  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(12px);
+}
+
+.demo-flow .current {
+  background: rgba(215, 239, 242, .88);
+  border-color: rgba(23, 100, 122, .28);
+  box-shadow: 0 5px 20px rgba(23, 100, 122, .12);
+}
+
+.demo-flow .done { background: rgba(226, 242, 233, .82); }
+.demo-flow .skipped { background: rgba(244, 247, 247, .7); }
+
+.evidence,
+.advanced-panel,
+.event-card,
+.review-status,
+.confirmed-monitor,
+.statusline,
+.demo-result {
+  background: var(--glass-inset);
+  border: 1px solid rgba(255, 255, 255, .68);
+}
+
+.evidence,
+.advanced-panel { border-radius: 9px; }
+.risk-evidence-summary { background: rgba(255, 255, 255, .47); }
+.risk-result { background: rgba(228, 245, 247, .82); }
+.risk-result.abnormal { background: rgba(255, 246, 223, .9); }
+.risk-result.worsening { background: rgba(255, 232, 229, .94); }
+.risk-result.untrusted_data { background: rgba(238, 242, 243, .9); }
+.guided-note,
+.baseline-warning { background: rgba(255, 245, 220, .9); }
+.notice.error { background: rgba(255, 236, 233, .94); }
+
+.logic li:before { background: rgba(255, 255, 255, .9); }
+.logic li.active:before { background: var(--accent); }
+.logic li.complete:before { background: #39755e; }
+
+.baseline-manual,
+.delivery-summary,
+.contact-list,
+.simulation-script,
+.observation { border-color: var(--rule); }
+
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .demo-header,
+  .journeys,
+  .baseline-strip,
+  .guided-main,
+  .guided-aside,
+  .advanced-details,
+  .demo-flow > div { background: rgba(255, 255, 255, .94); }
+}
+
+@media (max-width: 600px) {
+  .demo-header { padding: 13px 15px; }
+  .demo-header,
+  .journeys,
+  .baseline-strip,
+  .guided-main,
+  .guided-aside,
+  .advanced-details {
+    -webkit-backdrop-filter: blur(12px);
+    backdrop-filter: blur(12px);
+  }
+  .demo-flow { gap: 5px; }
+}
+
+@media (forced-colors: active) {
+  .demo-header,
+  .journeys,
+  .baseline-strip,
+  .guided-main,
+  .guided-aside,
+  .advanced-details,
+  .demo-flow > div { border: 1px solid CanvasText; box-shadow: none; }
+}
