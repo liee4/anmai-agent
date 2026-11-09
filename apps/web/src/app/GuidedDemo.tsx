@@ -1,3 +1,4 @@
+import type { RefObject } from 'react';
 import type { Dashboard, DemoInput } from '../api/client.js';
 import { BaselineStrip } from './BaselineStrip.js';
 import { RiskReviewStatus } from './RiskReviewStatus.js';
@@ -72,12 +73,18 @@ function statusText(dashboard: Dashboard, selected: Journey, result: string): st
   return dashboard.baseline ? '个人基线已建立，选择患者情景或输入一段实时体征。' : '先导入 14 天模拟历史数据，建立个人基线。';
 }
 
-export function GuidedDemo({ dashboard, selected, demoInput, result, busy, onSelect, onImportNext, onReset, onResume, onAction, onHelp }: {
+export function GuidedDemo({ dashboard, selected, demoInput, result, busy, wearerId, rawInput, inputRef, onRawInputChange, onFillNext, onImportRaw, onSelect, onImportNext, onReset, onResume, onAction, onHelp }: {
   dashboard: Dashboard;
   selected: Journey;
   demoInput: DemoInput | null;
   result: string;
   busy: boolean;
+  wearerId: string;
+  rawInput: string;
+  inputRef: RefObject<HTMLTextAreaElement | null>;
+  onRawInputChange: (value: string) => void;
+  onFillNext: () => void;
+  onImportRaw: () => void;
   onSelect: (journey: Journey) => void;
   onImportNext: () => void;
   onReset: () => void;
@@ -118,7 +125,7 @@ export function GuidedDemo({ dashboard, selected, demoInput, result, busy, onSel
       <p className="journey-desc">{journeys.find(item => item.key === selected)?.description}{blocked && ' · 当前事件进行中，可结束事件或重置后切换其他情景。'}</p>
     </section>
 
-    <BaselineStrip dashboard={dashboard} busy={busy} onImportNext={onImportNext} onReset={onReset} onResume={onResume} />
+    <BaselineStrip dashboard={dashboard} busy={busy} wearerId={wearerId} rawInput={rawInput} inputRef={inputRef} onRawInputChange={onRawInputChange} onFillNext={onFillNext} onImportRaw={onImportRaw} onImportNext={onImportNext} onReset={onReset} onResume={onResume} />
 
     <div className="demo-flow" aria-label="演示进度">{flowNames.map((name, index) => { const state = flowState(index, stage, Boolean(dashboard.baseline), risk?.level === 'worsening'); return <div key={name} className={state.className}><small>{state.label}</small><strong>{name}</strong></div>; })}</div>
 
@@ -127,7 +134,7 @@ export function GuidedDemo({ dashboard, selected, demoInput, result, busy, onSel
         {stage === 0 && <>
           <p className="eyebrow">开始演示</p><h2>先建立佩戴者的个人基线</h2>
           <p className="lead">一键导入 14 天模拟历史数据。系统按天汇总，再由当前模型提出个性化软阈值候选，经过代码校验后发布。</p>
-          <div className="guided-actions"><button className="primary" disabled={busy} onClick={onImportNext}>导入 14 天数据并尝试生成基线</button></div>
+          <p className="guided-note">点击上方“导入首轮 14 天”，或展开同一区域，用自己的 JSON 数据导入。</p>
           <div className="evidence"><h3>这一步完成后会看到</h3><dl><dt>输入</dt><dd>14 天模拟体征；统一入口自动识别历史导入</dd><dt>输出</dt><dd>有效天数、基线版本、个人参考值与上轮对比</dd><dt>模型</dt><dd>{dashboard.provider}；发布结果由后端安全校验决定</dd></dl></div>
         </>}
         {stage === 1 && <>

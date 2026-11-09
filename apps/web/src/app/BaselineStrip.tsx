@@ -1,3 +1,4 @@
+import type { RefObject } from 'react';
 import type { BaselineView, Dashboard } from '../api/client.js';
 
 function cycleRange(cycleId: string): string {
@@ -27,9 +28,15 @@ function weights(baseline: BaselineView | null): string {
   return `最新 14 天数据 ${current}% · 历史基线 ${recent}%${longTerm ? ` · 长期摘要 ${longTerm}%` : ''}`;
 }
 
-export function BaselineStrip({ dashboard, busy, onImportNext, onReset, onResume }: {
+export function BaselineStrip({ dashboard, busy, wearerId, rawInput, inputRef, onRawInputChange, onFillNext, onImportRaw, onImportNext, onReset, onResume }: {
   dashboard: Dashboard;
   busy: boolean;
+  wearerId: string;
+  rawInput: string;
+  inputRef: RefObject<HTMLTextAreaElement | null>;
+  onRawInputChange: (value: string) => void;
+  onFillNext: () => void;
+  onImportRaw: () => void;
   onImportNext: () => void;
   onReset: () => void;
   onResume: () => void;
@@ -46,6 +53,7 @@ export function BaselineStrip({ dashboard, busy, onImportNext, onReset, onResume
   const previousSpo2 = median(previous, 'resting', 'spo2');
 
   return <section className="baseline-strip" aria-label="个人基线学习进度">
+    <div className="baseline-strip-main">
     <div className="baseline-strip-copy">
       <strong>{paused ? '基线学习已暂停' : current ? `当前个人基线 v${current.version}` : '尚未生成个人基线'}</strong>
       <p>{paused ? '佩戴者表示不舒服；事件结束后须本人确认恢复，才能继续学习。' : current ? '每轮演示数据的日期与体征值不同；旧版不会因清空输入框而消失。' : '首次生成需要一个完整、合格的 14 天周期。'}</p>
@@ -62,5 +70,13 @@ export function BaselineStrip({ dashboard, busy, onImportNext, onReset, onResume
       {paused ? <button disabled={busy || eventActive} onClick={onResume} title={eventActive ? '先结束当前事件' : undefined}>我已恢复，继续学习</button> : <button className="primary" disabled={busy || eventActive} onClick={onImportNext} title={eventActive ? '先结束当前事件' : undefined}>{current ? `继续导入下一轮 14 天（尝试生成 v${current.version + 1}）` : '导入首轮 14 天'}</button>}
       <button disabled={busy} onClick={onReset}>重置演示数据</button>
     </div>
+    </div>
+    <details className="baseline-manual"><summary>使用自己的 JSON 数据导入基线</summary>
+      <p>与一键导入使用同一个数据入口；自动识别逐日数据或历史数据集。</p>
+      <label htmlFor="vital-json">体征数据 JSON</label>
+      <textarea ref={inputRef} id="vital-json" value={rawInput} onChange={event => onRawInputChange(event.target.value)} placeholder={JSON.stringify({ inputMode: 'auto', wearerId, data: ['...'] })} />
+      <div className="import-actions"><button disabled={busy || eventActive || paused} onClick={onFillNext}>填入下一轮 14 天数据</button><button className="primary" disabled={busy || eventActive || paused || !rawInput.trim()} onClick={onImportRaw}>导入并检查基线</button></div>
+      {(eventActive || paused) && <p>当前事件或基线暂停期间不能导入；结束事件并确认恢复后再继续。</p>}
+    </details>
   </section>;
 }

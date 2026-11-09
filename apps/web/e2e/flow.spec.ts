@@ -10,6 +10,8 @@ async function firstBaseline(page: import('@playwright/test').Page) {
 test('guides repeated baseline imports and restarts after reset', async ({ page }) => {
   await expect(page.getByRole('heading', { name: '一次异常体征，系统会怎样响应？' })).toBeVisible();
   await expect(page.locator('.journey-options button')).toHaveCount(7);
+  await expect(page.getByRole('button', { name: '导入首轮 14 天', exact: true })).toHaveCount(1);
+  await expect(page.locator('.advanced-details')).not.toContainText('导入并检查基线');
   await firstBaseline(page);
   await expect(page.locator('.cycle-comparison')).toContainText('2026-10-01 — 2026-10-14');
   const first = await page.locator('.cycle-comparison').innerText();
@@ -18,6 +20,12 @@ test('guides repeated baseline imports and restarts after reset', async ({ page 
   await expect(page.locator('.cycle-comparison')).toContainText('2026-10-15 — 2026-10-28');
   await expect(page.locator('.cycle-comparison')).toContainText('上轮');
   expect(await page.locator('.cycle-comparison').innerText()).not.toBe(first);
+  await page.getByText('使用自己的 JSON 数据导入基线').click();
+  await page.getByRole('button', { name: '填入下一轮 14 天数据' }).click();
+  await expect(page.locator('#vital-json')).not.toBeEmpty();
+  await page.getByRole('button', { name: '导入并检查基线' }).click();
+  await expect(page.locator('.baseline-strip-copy>strong')).toHaveText('当前个人基线 v3');
+  await expect(page.locator('#vital-json')).toBeEmpty();
   page.once('dialog', dialog => void dialog.accept());
   await page.getByRole('button', { name: '重置演示数据' }).click();
   await expect(page.locator('.baseline-strip-copy>strong')).toHaveText('尚未生成个人基线');
@@ -42,7 +50,7 @@ test('shows model observation, wearer response and relative contact', async ({ p
   await expect(page.locator('.baseline-strip-copy>strong')).toHaveText('基线学习已暂停');
   await expect(page.locator('.delivery-summary')).toContainText('主要亲属');
   await expect(page.locator('.evidence')).toContainText('表示不舒服，需要亲属');
-  await page.getByRole('button', { name: '查看原始记录与演示设置' }).click();
+  await page.getByText('使用自己的 JSON 数据导入基线').click();
   await expect(page.getByRole('button', { name: '填入下一轮 14 天数据' })).toBeDisabled();
   await expect(page.getByRole('button', { name: '导入并检查基线' })).toBeDisabled();
   await page.getByRole('button', { name: '亲属已接管' }).click();
