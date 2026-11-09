@@ -18,7 +18,8 @@ export function nextDemoHistory(wearerId: string, recordedDates: string[]): Inge
   if (covered === 14) cycleIndex++;
 
   const start = anchor + cycleIndex * 14 * dayMs;
-  const phase = cycleIndex % 5;
+  // Keep adjacent demo cycles visibly different while staying in a plausible range.
+  const phase = (cycleIndex * 2) % 11;
   const data: VitalSample[] = [];
   for (let day = 0; day < 14; day++) for (let minute = 0; minute < 480; minute++) {
     data.push({

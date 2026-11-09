@@ -69,7 +69,7 @@ export function buildApp({ db, clock, baselineProvider = new FakeBaselineProvide
   function snapshot(wearerId: string) {
     const event = emergency.getActiveForWearer(wearerId);
     const activeBaseline = baseline.getActive(wearerId);
-    return { wearerId, risk: latestRisk.get(wearerId) ?? riskReview.getLastObservation(wearerId)?.risk ?? null, event, eventCard: event ? cards.get(event.eventId) : null, contactDeliveries: event ? emergency.getContactDeliveries(event.eventId) : [], messages: event ? messages.get(event.eventId, event.state) : null, confirmedMonitor: emergency.getMonitorState(wearerId), baseline: activeBaseline, aggregationWarning: Boolean(activeBaseline && activeBaseline.baseline.aggregationVersion !== 2), baselineState: baseline.getState(wearerId), provider: nameOf(baselineProviderName, wearerId), riskReview: riskReview.get(wearerId), riskReviewProvider: nameOf(riskReviewProviderName, wearerId), messageProvider: nameOf(messageProviderName, wearerId) };
+    return { wearerId, risk: latestRisk.get(wearerId) ?? riskReview.getLastObservation(wearerId)?.risk ?? null, event, eventCard: event ? cards.get(event.eventId) : null, contactDeliveries: event ? emergency.getContactDeliveries(event.eventId) : [], messages: event ? messages.get(event.eventId, event.state) : null, confirmedMonitor: emergency.getMonitorState(wearerId), baseline: activeBaseline, baselineHistory: baseline.getRecentVersions(wearerId), aggregationWarning: Boolean(activeBaseline && activeBaseline.baseline.aggregationVersion !== 2), baselineState: baseline.getState(wearerId), provider: nameOf(baselineProviderName, wearerId), riskReview: riskReview.get(wearerId), riskReviewProvider: nameOf(riskReviewProviderName, wearerId), messageProvider: nameOf(messageProviderName, wearerId) };
   }
 
   function sse(event: BusEvent): string { return `id: ${event.id}\nevent: update\ndata: ${JSON.stringify(event)}\n\n`; }
@@ -181,7 +181,11 @@ export function buildApp({ db, clock, baselineProvider = new FakeBaselineProvide
     const { scenario } = request.params as { scenario: Scenario };
     const body = request.body as { wearerId?: string };
     if (!scenarios.includes(scenario) || !body?.wearerId) return reply.code(400).send({ code: 'INVALID_SCENARIO', message: 'Known scenario and wearerId are required' });
-    return evaluate(body.wearerId, scenarioSamples(scenario, clock.now()), 'scenario');
+    const activeBaseline = baseline.getActive(body.wearerId);
+    const samples = scenarioSamples(scenario, clock.now(), activeBaseline?.baseline as PersonalBaseline ?? {});
+    const result = await evaluate(body.wearerId, samples, 'scenario');
+    const latest = samples.at(-1)!;
+    return { ...result, demoInput: { heartRate: latest.heartRate, spo2: latest.spo2, activity: latest.activity } };
   });
   app.get('/api/simulator/history/next', async (request, reply) => {
     const { wearerId } = request.query as { wearerId?: string };

@@ -12,6 +12,7 @@ export interface Dashboard {
   event: EmergencyEvent | null;
   confirmedMonitor: { confirmedAt: string; recheckAt: string; recheckCount: number } | null;
   baseline: BaselineView | null;
+  baselineHistory: BaselineView[];
   aggregationWarning: boolean;
   baselineState: { status: string; pausedAt: string | null; reason: string | null };
   provider: string;
@@ -23,6 +24,7 @@ export interface Dashboard {
   messageProvider: string;
 }
 export interface DemoSession { wearerId: string; publicDemo: boolean; mode: 'fake' | 'deepseek'; deepseekConfigured: boolean; remaining: number }
+export interface DemoInput { heartRate: number; spo2: number; activity: string }
 
 async function json<T>(path: string, options?: RequestInit): Promise<T> {
   const response = await fetch(path, { ...options, headers: { ...(options?.body == null ? {} : { 'Content-Type': 'application/json' }), ...options?.headers } });
@@ -39,7 +41,7 @@ export const api = {
   nextDemoHistory: (wearerId: string) => json<{ inputMode: string; wearerId: string; data: { timestamp: string; heartRate: number; spo2: number; activity: string }[] }>(`/api/simulator/history/next?wearerId=${encodeURIComponent(wearerId)}`),
   resetDemo: (wearerId: string) => json<{ reset: boolean }>('/api/simulator/reset', { method: 'POST', body: JSON.stringify({ wearerId, confirmation: 'RESET_DEMO_DATA' }) }),
   ingest: (payload: unknown) => json<{ detectedMode: string; coveredDays: number; successfulDays: number; invalidDays: number; completedCycles: number; modelCalls: number; baselineVersion: number | null }>('/api/ingest', { method: 'POST', body: JSON.stringify(payload) }),
-  scenario: (wearerId: string, scenario: string) => json<{ risk: RiskAssessment; event: EmergencyEvent | null }>(`/api/simulator/${scenario}`, { method: 'POST', body: JSON.stringify({ wearerId }) }),
+  scenario: (wearerId: string, scenario: string) => json<{ risk: RiskAssessment; event: EmergencyEvent | null; demoInput: DemoInput }>(`/api/simulator/${scenario}`, { method: 'POST', body: JSON.stringify({ wearerId }) }),
   action: (event: EmergencyEvent, kind: string) => json<{ ok: boolean; event: EmergencyEvent }>(`/api/events/${event.eventId}/actions`, { method: 'POST', body: JSON.stringify({ stateVersion: event.stateVersion, kind }) }),
   help: (wearerId: string) => json<{ event: EmergencyEvent }>('/api/monitor/help', { method: 'POST', body: JSON.stringify({ wearerId }) }),
   resume: (wearerId: string) => json<{ resumed: boolean }>(`/api/baselines/${encodeURIComponent(wearerId)}/resume`, { method: 'POST' }),

@@ -19,7 +19,7 @@ it('resets only the demo wearer and restarts its baseline sequence at v1', async
   expect((await app.inject({ method: 'POST', url: '/api/simulator/reset', payload: { wearerId: 'other-wearer', confirmation: 'RESET_DEMO_DATA' } })).statusCode).toBe(400);
   expect((await app.inject({ method: 'GET', url: '/api/dashboard/demo-wearer' })).json().baseline.version).toBe(1);
   expect((await app.inject({ method: 'POST', url: '/api/simulator/reset', payload: resetPayload })).json()).toEqual({ reset: true });
-  expect((await app.inject({ method: 'GET', url: '/api/dashboard/demo-wearer' })).json()).toMatchObject({ baseline: null, event: null, risk: null, baselineState: { status: 'active' } });
+  expect((await app.inject({ method: 'GET', url: '/api/dashboard/demo-wearer' })).json()).toMatchObject({ baseline: null, baselineHistory: [], event: null, risk: null, baselineState: { status: 'active' } });
   for (const table of ['ingested_samples', 'minute_vitals', 'daily_summaries', 'baseline_state', 'baseline_versions', 'baseline_attempts', 'baseline_exclusions', 'risk_sample_audit', 'emergency_events', 'wearer_monitor_state']) {
     expect(db.raw.prepare(`SELECT COUNT(*) AS count FROM ${table} WHERE wearer_id = ?`).get('demo-wearer')).toMatchObject({ count: 0 });
   }

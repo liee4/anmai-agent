@@ -58,6 +58,8 @@ export class BaselineService {
 
   getActive(wearerId: string): StoredBaseline | null { return this.baselines.getActive(wearerId); }
 
+  getRecentVersions(wearerId: string): StoredBaseline[] { return this.baselines.listRetained(wearerId, new Date().toISOString()).slice(0, 2); }
+
   getState(wearerId: string): { status: string; pausedAt: string | null; reason: string | null } {
     const row = this.db.raw.prepare('SELECT status, paused_at, pause_reason FROM baseline_state WHERE wearer_id = ?').get(wearerId) as { status: string; paused_at: string | null; pause_reason: string | null } | undefined;
     return { status: row?.status ?? 'active', pausedAt: row?.paused_at ?? null, reason: row?.pause_reason ?? null };
