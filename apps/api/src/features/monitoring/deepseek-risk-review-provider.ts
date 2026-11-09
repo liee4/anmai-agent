@@ -6,13 +6,14 @@ export class DeepSeekRiskReviewProvider implements RiskReviewProvider {
   constructor(private readonly options: { apiKey: string; baseUrl: string; model: string; fetcher?: typeof fetch }) {}
 
   async review(request: RiskReviewRequest): Promise<RiskReviewDecision> {
+    const modelInput = { risk: { level: request.risk.level, reasons: request.risk.reasons, assessedAt: request.risk.assessedAt, ...(request.risk.evidence ? { evidence: request.risk.evidence } : {}) }, latest: request.latest, recent: request.recent, baselineVersion: request.baselineVersion, baseline: request.baseline };
     const response = await (this.options.fetcher ?? fetch)(`${this.options.baseUrl.replace(/\/$/, '')}/chat/completions`, {
       method: 'POST',
       headers: { Authorization: `Bearer ${this.options.apiKey}`, 'Content-Type': 'application/json' },
       signal: AbortSignal.timeout(5_000),
       body: JSON.stringify({ model: this.options.model, temperature: 0, response_format: { type: 'json_object' }, messages: [
-        { role: 'system', content: '你是模拟健康监测的普通异常复核器。只返回 JSON 对象 decision(ask|observe|uncertain) 和简短 reason。最多建议一次短时观察。不能修改风险等级、固定阈值、截止时间或调用亲属和急救工具；证据不足选 uncertain。' },
-        { role: 'user', content: JSON.stringify(request) },
+        { role: 'system', content: '你是模拟健康监测的普通异常复核器。阅读逐通道质量、偏离方向、持续秒数、趋势和最近体征。只返回 JSON 对象 decision(ask|observe|uncertain) 和简短 reason。最多建议一次短时观察。不能修改风险等级、固定阈值、截止时间或调用亲属和急救工具；证据不足选 uncertain。' },
+        { role: 'user', content: JSON.stringify(modelInput) },
       ] }),
     });
     if (!response.ok) throw new Error(`DeepSeek HTTP ${response.status}`);

@@ -10,7 +10,7 @@ export class DeepSeekMessageProvider implements MessageProvider {
       method: 'POST', headers: { Authorization: `Bearer ${this.options.apiKey}`, 'Content-Type': 'application/json' }, signal: AbortSignal.timeout(5_000),
       body: JSON.stringify({ model: this.options.model, temperature: 0, response_format: { type: 'json_object' }, messages: [
         { role: 'system', content: `你只负责为已确定的安脉演示事件写简短中文提示。只返回 JSON，字段只能是 ${fields.join(',')}，每字段不超过 300 字。不能改变状态、接收者、计时、风险判断。emergencyScript 只用于系统模拟自动呼救，不用于亲属自行呼救。` },
-        { role: 'user', content: JSON.stringify({ state: request.event.state, risk: request.event.risk, locationName: request.event.location?.name ?? null, fallback: request.fallback }) },
+        { role: 'user', content: JSON.stringify({ state: request.event.state, risk: { level: request.event.risk.level, reasons: request.event.risk.reasons, evidence: request.event.risk.evidence }, ...(fields.includes('emergencyScript') ? { locationName: request.event.location?.name ?? null } : {}), fallback: request.fallback }) },
       ] }),
     });
     if (!response.ok) throw new Error(`DeepSeek HTTP ${response.status}`);

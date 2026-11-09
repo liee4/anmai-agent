@@ -40,8 +40,7 @@ export class EmergencyService {
       return 'suppress';
     }
     if (row.normal_since) this.db.raw.prepare('UPDATE wearer_monitor_state SET normal_since = NULL WHERE wearer_id = ?').run(wearerId);
-    const previous = JSON.parse(row.fingerprint_json) as RiskAssessment;
-    if (risk.level === 'worsening' || risk.score >= previous.score + 2) {
+    if (risk.level === 'worsening') {
       this.db.raw.prepare('DELETE FROM wearer_monitor_state WHERE wearer_id = ?').run(wearerId);
       return 'worsening';
     }
@@ -57,7 +56,7 @@ export class EmergencyService {
     const row = this.db.raw.prepare('SELECT normal_since FROM event_health_state WHERE event_id = ?').get(event.eventId) as { normal_since: string | null } | undefined;
     const previous = this.getLastObservedRisk(event.eventId);
     if (risk.level === 'worsening' && (previous?.level !== 'worsening' || risk.reasons.some(reason => reason.startsWith('fixed_') && !previous.reasons.includes(reason)))) {
-      this.appendTimeline(event.eventId, 'risk_worsened', JSON.stringify({ score: risk.score, reasons: risk.reasons }));
+      this.appendTimeline(event.eventId, 'risk_worsened', JSON.stringify({ level: risk.level, reasons: risk.reasons, evidence: risk.evidence }));
     }
     const normalSince = risk.level === 'normal' ? row?.normal_since ?? now : null;
     this.db.raw.prepare('INSERT INTO event_health_state(event_id, last_risk_json, normal_since) VALUES (?, ?, ?) ON CONFLICT(event_id) DO UPDATE SET last_risk_json = excluded.last_risk_json, normal_since = excluded.normal_since').run(event.eventId, JSON.stringify(risk), normalSince);

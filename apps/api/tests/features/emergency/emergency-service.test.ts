@@ -6,6 +6,15 @@ import { FakeClock } from '../../../src/clock.js';
 const risk = { level: 'abnormal' as const, score: 5, reasons: ['heart_rate'], assessedAt: '2026-10-28T10:00:00Z' };
 
 describe('emergency persistence', () => {
+  it('does not escalate a confirmed ordinary anomaly because of a legacy score change', () => {
+    const db = openDatabase(':memory:');
+    const service = new EmergencyService(db, new FakeClock(new Date('2026-10-28T10:00:00Z')));
+    const event = service.start('wearer-1', risk);
+    service.act(event.eventId, event.stateVersion, { kind: 'wearer_safe' });
+    expect(service.observeRisk('wearer-1', { ...risk, score: 99 })).toBe('suppress');
+    expect(service.observeRisk('wearer-1', { level: 'worsening', reasons: ['clear_worsening_trend'], assessedAt: risk.assessedAt })).toBe('worsening');
+    db.close();
+  });
   it('rejects stale wearer responses and retains the winning state', () => {
     const db = openDatabase(':memory:');
     const service = new EmergencyService(db, new FakeClock(new Date('2026-10-28T10:00:00Z')));

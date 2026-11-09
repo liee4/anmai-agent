@@ -95,8 +95,8 @@ it('routes all three model tasks through the selected session mode', async () =>
     const providers = demoProviders(sessions, { apiKey: 'private-test-key', fetcher: fetcher as typeof fetch });
     const baseline: BaselineGenerationRequest = { wearerId, cycleId: 'cycle-1', cycleStart: '2026-10-01T00:00:00Z', cycleEnd: '2026-10-14T23:59:59Z', validDays: 10, observations: [], recentBaselines: [], longTermSummary: null, evidenceWeights: { current: 1, recent: 0, longTerm: 0 }, allowedRanges: {}, evidenceRefs: ['cycle-1'] };
     expect((await providers.baseline.generateCandidate(baseline)).baselineCandidate.confidence).toBe('medium');
-    expect((await providers.review.review({ wearerId, risk: { level: 'abnormal', score: 2, reasons: [], assessedAt: '2026-11-05T00:00:00Z' }, latest: { timestamp: '2026-11-05T00:00:00Z', activity: 'resting', heartRate: 110 }, recent: [], baselineVersion: 1, baseline: {} })).decision).toBe('observe');
-    const event = { wearerId, state: 'wearer_alert' } as EmergencyEvent;
+    expect((await providers.review.review({ wearerId, risk: { level: 'abnormal', reasons: [], assessedAt: '2026-11-05T00:00:00Z' }, latest: { timestamp: '2026-11-05T00:00:00Z', activity: 'resting', heartRate: 110 }, recent: [], baselineVersion: 1, baseline: {} })).decision).toBe('observe');
+    const event = { wearerId, state: 'wearer_alert', risk: { level: 'abnormal', reasons: ['heart_rate_persistent'], assessedAt: '2026-11-05T00:00:00Z' }, location: null } as EmergencyEvent;
     expect((await providers.message.compose({ event, fallback: { wearerPrompt: '请确认' } })).wearerPrompt).toContain('不舒服');
     expect(calls).toEqual(['Bearer private-test-key', 'Bearer private-test-key', 'Bearer private-test-key']);
     expect(sessions.status(wearerId).remaining).toBe(2);

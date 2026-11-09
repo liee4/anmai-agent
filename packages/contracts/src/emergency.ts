@@ -4,7 +4,19 @@ import { LocationSchema } from './vitals.js';
 
 export const RiskLevelSchema = Type.Union([Type.Literal('normal'), Type.Literal('mild'), Type.Literal('abnormal'), Type.Literal('worsening'), Type.Literal('untrusted_data')]);
 export type RiskLevel = Static<typeof RiskLevelSchema>;
-export const RiskAssessmentSchema = Type.Object({ level: RiskLevelSchema, score: Type.Number({ minimum: 0 }), reasons: Type.Array(Type.String()), assessedAt: TimestampSchema }, { additionalProperties: false });
+const MetricQualitySchema = Type.Union([Type.Literal('valid'), Type.Literal('missing'), Type.Literal('suspect')]);
+export const RiskEvidenceSchema = Type.Object({
+  context: Type.Union([Type.Literal('resting'), Type.Literal('activity'), Type.Literal('night'), Type.Literal('unknown')]),
+  quality: Type.Object({ heartRate: MetricQualitySchema, spo2: MetricQualitySchema, bloodPressure: MetricQualitySchema }),
+  values: Type.Object({ heartRate: Type.Optional(Type.Number()), spo2: Type.Optional(Type.Number()), systolicBP: Type.Optional(Type.Number()) }),
+  deviation: Type.Object({ heartRateHigh: Type.Optional(Type.Number()), heartRateLow: Type.Optional(Type.Number()), spo2Low: Type.Optional(Type.Number()) }),
+  coverageSeconds: Type.Object({ heartRate: Type.Integer({ minimum: 0 }), spo2: Type.Integer({ minimum: 0 }) }),
+  abnormalSeconds: Type.Object({ heartRate: Type.Integer({ minimum: 0 }), spo2: Type.Integer({ minimum: 0 }) }),
+  trend: Type.Union([Type.Literal('none'), Type.Literal('heart_rate_rising'), Type.Literal('heart_rate_falling'), Type.Literal('spo2_falling')]),
+  fixedBoundary: Type.Boolean(),
+}, { additionalProperties: false });
+export type RiskEvidence = Static<typeof RiskEvidenceSchema>;
+export const RiskAssessmentSchema = Type.Object({ level: RiskLevelSchema, score: Type.Optional(Type.Number({ minimum: 0 })), reasons: Type.Array(Type.String()), assessedAt: TimestampSchema, evidence: Type.Optional(RiskEvidenceSchema) }, { additionalProperties: false });
 export type RiskAssessment = Static<typeof RiskAssessmentSchema>;
 export const EventStateSchema = Type.Union([Type.Literal('wearer_alert'), Type.Literal('safe_recheck'), Type.Literal('primary_contact'), Type.Literal('other_contacts'), Type.Literal('relative_takeover'), Type.Literal('simulated_call'), Type.Literal('closed')]);
 export type EventState = Static<typeof EventStateSchema>;

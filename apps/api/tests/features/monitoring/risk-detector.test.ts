@@ -26,12 +26,34 @@ describe('risk detector', () => {
     expect(detector.evaluate(samples(35, 112)).level).toBe('abnormal');
     expect(detector.evaluate(samples(35, 112).map(sample => ({ ...sample, activity: 'activity' }))).level).toBe('normal');
   });
-  it('escalates when a second vital stays abnormal during activity', () => {
-    const stream = samples(35, 120, 93).map(sample => ({ ...sample, activity: 'activity' as const }));
+  it('keeps two mild persistent channels ordinary without a worsening trend', () => {
+    const stream = samples(35, 110, 93);
     expect(detector.evaluate(stream)).toMatchObject({
-      level: 'worsening',
-      reasons: expect.arrayContaining(['heart_rate_persistent', 'spo2_persistent', 'multiple_vitals']),
+      level: 'abnormal',
+      reasons: expect.arrayContaining(['heart_rate_persistent', 'spo2_persistent']),
     });
+  });
+
+  it('evaluates a persistent heart-rate anomaly when SpO2 is unavailable', () => {
+    const result = detector.evaluate(samples(35, 112).map(({ spo2: _spo2, ...sample }) => sample));
+    expect(result.level).toBe('abnormal');
+    expect(result.evidence?.quality.spo2).toBe('missing');
+    expect(result).not.toHaveProperty('score');
+  });
+
+  it('evaluates a fixed heart-rate boundary without SpO2', () => {
+    const result = detector.evaluate(samples(35, 140).map(({ spo2: _spo2, ...sample }) => sample));
+    expect(result.level).toBe('worsening');
+  });
+
+  it('does not treat oxygen above its personal baseline as an anomaly', () => {
+    const result = detector.evaluate(samples(35, 78, 97), { observations: [{ context: 'resting', spo2: { median: 94, mad: 0.2 } }] });
+    expect(result.level).toBe('normal');
+  });
+
+  it('detects a clear worsening trend after sustained heart-rate abnormality', () => {
+    const stream = [...samples(30, 108), ...samples(40, 118).slice(30)];
+    expect(detector.evaluate(stream).level).toBe('worsening');
   });
   it('checks a fresh fixed blood-pressure boundary immediately', () => {
     const stream: VitalSample[] = samples(30, 78);
@@ -74,9 +96,44 @@ describe('risk detector', () => {
     expect(detector.evaluate(stream).level).toBe('untrusted_data');
   });
 
-  it('does not trust contradictory heart rates within one second', () => {
+  it('isolates contradictory heart rates without discarding valid oxygen', () => {
     const stream = samples(5, 78);
     stream.push({ ...stream[4]!, timestamp: new Date(Date.UTC(2026, 9, 28, 10, 0, 4, 500)).toISOString(), heartRate: 220 });
+    expect(detector.evaluate(stream)).toMatchObject({ level: 'normal', evidence: { quality: { heartRate: 'suspect', spo2: 'valid' } } });
+  });
+
+  it('rejects conflicting values at the exact same timestamp', () => {
+    const stream = samples(35, 125);
+    stream.push({ ...stream[34]!, heartRate: 110 });
+    expect(detector.evaluate(stream)).toMatchObject({ level: 'normal', evidence: { quality: { heartRate: 'suspect', spo2: 'valid' } } });
+  });
+
+  it('does not use a fixed heart-rate boundary while a recent second conflicts', () => {
+    const stream = samples(35, 140);
+    stream.push({ ...stream[30]!, timestamp: new Date(Date.UTC(2026, 9, 28, 10, 0, 30, 500)).toISOString(), heartRate: 60 });
+    expect(detector.evaluate(stream)).toMatchObject({ level: 'normal', evidence: { quality: { heartRate: 'suspect', spo2: 'valid' } } });
+  });
+
+  it('rejects an implausible blood-pressure pair before checking fixed boundaries', () => {
+    const stream: VitalSample[] = samples(35, 78);
+    stream[34] = { ...stream[34]!, systolicBP: 1, diastolicBP: 0 };
+    expect(detector.evaluate(stream)).toMatchObject({ level: 'normal', evidence: { quality: { bloodPressure: 'suspect' } } });
+  });
+
+  it('uses valid readings without a known activity context for fixed boundaries only', () => {
+    const normal = samples(35, 78).map(sample => ({ ...sample, activity: 'unknown' as const }));
+    expect(detector.evaluate(normal).level).toBe('normal');
+    const fixed = samples(35, 140).map(sample => ({ ...sample, activity: 'unknown' as const }));
+    expect(detector.evaluate(fixed).level).toBe('worsening');
+  });
+
+  it('rejects a recent fixed-boundary reading after a five-second leading gap', () => {
+    const stream = [...samples(25, 78), ...samples(35, 140).slice(30)];
+    expect(detector.evaluate(stream).level).toBe('untrusted_data');
+  });
+
+  it('does not mistake an old invalid stream for a newly started device', () => {
+    const stream = [...samples(25, 300), ...samples(35, 140).slice(30)].map(({ spo2: _spo2, ...sample }) => sample);
     expect(detector.evaluate(stream).level).toBe('untrusted_data');
   });
 });

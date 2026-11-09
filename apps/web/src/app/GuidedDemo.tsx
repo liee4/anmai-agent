@@ -2,6 +2,7 @@ import type { RefObject } from 'react';
 import type { Dashboard, DemoInput } from '../api/client.js';
 import { BaselineStrip } from './BaselineStrip.js';
 import { RiskReviewStatus } from './RiskReviewStatus.js';
+import { RiskEvidenceSummary } from './RiskEvidenceSummary.js';
 
 export type Journey = 'baseline' | 'rest' | 'activity' | 'responsive' | 'noanswer' | 'worsening' | 'device';
 
@@ -20,7 +21,7 @@ const stateLabels: Record<string, string> = {
 };
 const riskLabels: Record<string, string> = { normal: '体征平稳', abnormal: '持续异常', worsening: '明显恶化', untrusted_data: '数据不可信', mild: '轻度偏离' };
 const reasonLabels: Record<string, string> = {
-  heart_rate_persistent: '心率持续异常', spo2_persistent: '血氧持续异常', blood_pressure_confirmed_twice: '两次血压测量异常', multiple_vitals: '多项体征异常', rest_or_night: '发生在静息或夜间', fixed_heart_rate_high: '心率触及演示固定上限', fixed_heart_rate_low: '心率触及演示固定下限', fixed_spo2_low: '血氧触及演示固定下限', fixed_systolic_high: '血压触及演示固定上限', fixed_systolic_low: '血压触及演示固定下限', device_untrusted_or_invalid: '设备数据质量不足', insufficient_recent_samples: '最近有效采样不足',
+  heart_rate_persistent: '心率持续异常', spo2_persistent: '血氧持续异常', blood_pressure_confirmed_twice: '两次血压测量异常', clear_worsening_trend: '持续异常后进一步明显恶化', activity_unknown: '活动状态未知，暂不使用个人基线', fixed_heart_rate_high: '心率触及演示固定上限', fixed_heart_rate_low: '心率触及演示固定下限', fixed_spo2_low: '血氧触及演示固定下限', fixed_systolic_high: '血压触及演示固定上限', fixed_systolic_low: '血压触及演示固定下限', device_untrusted_or_invalid: '设备数据质量不足', insufficient_recent_samples: '最近有效采样不足',
 };
 const flowNames = ['建立个人基线', '输入实时体征', '判断并询问佩戴者', '联系亲属或模拟呼救'];
 
@@ -116,6 +117,9 @@ export function GuidedDemo({ dashboard, selected, demoInput, result, busy, weare
     ['分级联系', '主要亲属 → 其他亲属 → 模拟呼救'],
   ];
   const reasons = risk?.reasons.map(reason => reasonLabels[reason] ?? reason).join(' · ');
+  const riskTitle = risk?.level === 'normal' && risk.reasons.includes('activity_unknown') ? '活动状态未知，继续监测'
+    : risk?.level === 'normal' && risk.evidence && (risk.evidence.quality.heartRate !== 'valid' || risk.evidence.quality.spo2 !== 'valid') ? '部分体征未确认'
+      : risk ? riskLabels[risk.level] ?? risk.level : '体征已处理';
   const latest = dashboard.eventCard?.latest;
 
   return <>
@@ -139,9 +143,9 @@ export function GuidedDemo({ dashboard, selected, demoInput, result, busy, weare
         </>}
         {stage === 1 && <>
           <p className="eyebrow">{dashboard.baseline ? `基线 v${dashboard.baseline.version} 由 ${dashboard.baseline.baseline.provider ?? '未知模型'} 生成` : '尚无个人基线'} · 当前模型 {dashboard.provider}</p>
-          <h2>{risk && selected !== 'baseline' ? riskLabels[risk.level] ?? '体征已处理' : '输入一段模拟实时体征'}</h2>
+          <h2>{risk && selected !== 'baseline' ? riskTitle : '输入一段模拟实时体征'}</h2>
           <p className="lead">{preset ?? '选一个场景。页面会显示预设输入、实际规则结果和系统采取的下一步动作。'}</p>
-          {risk && selected !== 'baseline' && <div className={`risk-result ${risk.level}`}><strong>规则结果：{riskLabels[risk.level] ?? risk.level}</strong><span>风险分数 {risk.score} · {reasons || '无异常原因'}</span>{risk.level === 'untrusted_data' && <span>请检查设备；不会启动亲属联系。</span>}</div>}
+          {risk && selected !== 'baseline' && <div className={`risk-result ${risk.level}`}><strong>规则结果：{riskTitle}</strong><span>判断依据：{reasons || '未达到异常条件'}</span><RiskEvidenceSummary risk={risk} />{risk.level === 'untrusted_data' && <span>请检查设备；不会启动亲属联系。</span>}</div>}
           {dashboard.confirmedMonitor && <p className="confirmed-monitor">佩戴者已表示“我没事”，后台继续监测；若进一步明显恶化仍会升级。</p>}
           <div className="scenario-grid">
             <button disabled={busy || blocked} onClick={() => onSelect('rest')}><strong>平稳体征</strong><span>心率 {normalHeartRate} 次/分 · 血氧 {normalSpo2}%</span></button>
@@ -156,6 +160,7 @@ export function GuidedDemo({ dashboard, selected, demoInput, result, busy, weare
           <p className="eyebrow">{event ? '正在询问佩戴者' : '规则检测与模型复核'}</p>
           <h2>{event ? '异常仍在持续，请佩戴者确认状态' : risk?.level === 'untrusted_data' ? '当前设备数据不可信，观察仍在进行' : review?.status === 'observe' ? '持续异常，模型建议短时观察' : '普通异常，模型正在复核'}</h2>
           <p className="lead">{preset ? `${preset} · ` : ''}{reasons || '等待更多有效体征'}</p>
+          {risk && <RiskEvidenceSummary risk={risk} />}
           {event ? <>
             <div className="guided-actions"><button className="primary" disabled={busy} onClick={() => onAction('wearer_unwell')}>我不舒服，需要亲属</button><button disabled={busy} onClick={() => onAction('wearer_safe')}>我没事，继续后台检测</button></div>
             {selected === 'noanswer' && <p className="guided-note">此情景请保持无回应。提醒倒计时结束后，系统会自动联系主要亲属。</p>}
@@ -168,7 +173,7 @@ export function GuidedDemo({ dashboard, selected, demoInput, result, busy, weare
         </>}
         {stage === 3 && event && <>
           <p className="eyebrow">已进入应急响应</p><h2>{stateLabels[event.state] ?? event.state}</h2>
-          <p className="lead">{risk?.level === 'worsening' ? '明显恶化触及固定安全边界，已跳过模型等待。' : '佩戴者表示不舒服或未回应，按顺序联系亲属。'}{eventSeconds !== null ? ` 当前阶段剩余 ${eventSeconds} 秒。` : ''}</p>
+          <p className="lead">{risk?.level === 'worsening' ? risk.evidence?.fixedBoundary ? '体征触及演示固定边界，已跳过模型等待。' : '持续异常后进一步明显恶化，已跳过模型等待。' : '佩戴者表示不舒服或未回应，按顺序联系亲属。'}{eventSeconds !== null ? ` 当前阶段剩余 ${eventSeconds} 秒。` : ''}</p>
           <div className="guided-actions">
             {(event.state === 'primary_contact' || event.state === 'other_contacts') && <><button className="primary" disabled={busy} onClick={() => onAction('relative_takeover')}>亲属已接管</button><button disabled={busy} onClick={() => onAction('relative_decline')}>无法接管，联系下一位</button></>}
             {(event.state === 'relative_takeover' || event.state === 'simulated_call') && <button className="primary" disabled={busy} onClick={() => onAction('close')}>结束模拟事件</button>}

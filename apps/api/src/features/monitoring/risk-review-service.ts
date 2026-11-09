@@ -4,7 +4,7 @@ import { RiskReviewDecisionSchema, type RiskReviewDecision, type RiskReviewSnaps
 import type { Clock } from '../../clock.js';
 import type { DatabaseContext } from '../../infra/database.js';
 import type { PersonalBaseline } from './risk-detector.js';
-import type { RiskReviewProvider, RiskReviewRequest } from './risk-review-provider.js';
+import type { RiskReviewProvider, RiskReviewRequest, ReviewVital } from './risk-review-provider.js';
 
 interface ReviewRow {
   generation: number;
@@ -68,7 +68,13 @@ export class RiskReviewService {
     if (current?.status === 'pending') return { action: 'observe', snapshot: this.get(wearerId) };
 
     const generation = (current?.generation ?? 0) + 1;
-    const compact = ({ location: _location, ...sample }: VitalSample) => sample;
+    const compact = (sample: VitalSample): ReviewVital => ({ timestamp: sample.timestamp, activity: sample.activity,
+      ...(sample.heartRate === undefined ? {} : { heartRate: sample.heartRate }),
+      ...(sample.spo2 === undefined ? {} : { spo2: sample.spo2 }),
+      ...(sample.systolicBP === undefined ? {} : { systolicBP: sample.systolicBP }),
+      ...(sample.diastolicBP === undefined ? {} : { diastolicBP: sample.diastolicBP }),
+      ...(sample.deviceTrusted === undefined ? {} : { deviceTrusted: sample.deviceTrusted }),
+    });
     const recent = samples.filter(sample => Date.parse(risk.assessedAt) - Date.parse(sample.timestamp) <= 60_000).slice(-60).map(compact);
     const request: RiskReviewRequest = { wearerId, risk, latest: compact(samples.at(-1)!), recent, baselineVersion, baseline };
     const providerName = typeof this.providerName === 'function' ? this.providerName(wearerId) : this.providerName;

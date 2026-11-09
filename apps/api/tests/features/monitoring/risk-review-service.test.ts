@@ -3,10 +3,25 @@ import type { RiskAssessment, VitalSample } from '@anmai/contracts';
 import { FakeClock } from '../../../src/clock.js';
 import { openDatabase } from '../../../src/infra/database.js';
 import { RiskReviewService } from '../../../src/features/monitoring/risk-review-service.js';
+import type { RiskReviewRequest } from '../../../src/features/monitoring/risk-review-provider.js';
 
 const abnormal: RiskAssessment = { level: 'abnormal', score: 2, reasons: ['heart_rate_persistent'], assessedAt: '2026-11-04T00:00:00Z' };
 const worsening: RiskAssessment = { level: 'worsening', score: 10, reasons: ['fixed_heart_rate_high'], assessedAt: '2026-11-04T00:00:00Z' };
 const samples: VitalSample[] = [{ timestamp: '2026-11-04T00:00:00Z', heartRate: 110, spo2: 97, activity: 'resting' }];
+
+it('sends evidence and recent vitals to review without location', async () => {
+  const db = openDatabase(':memory:');
+  const clock = new FakeClock(new Date('2026-11-04T00:00:00Z'));
+  let sent: RiskReviewRequest | null = null;
+  const service = new RiskReviewService(db, clock, { review: async request => { sent = request; return { decision: 'ask', reason: '请确认状态' }; } }, 'fake');
+  const evidence = { context: 'resting' as const, quality: { heartRate: 'valid' as const, spo2: 'missing' as const, bloodPressure: 'missing' as const }, values: { heartRate: 110 }, deviation: { heartRateHigh: 3.2 }, coverageSeconds: { heartRate: 10, spo2: 0 }, abnormalSeconds: { heartRate: 27, spo2: 0 }, trend: 'none' as const, fixedBoundary: false };
+  const location = { name: 'private-home', latitude: 1, longitude: 2 };
+  await service.assess('secret-wearer-id', { ...abnormal, evidence }, [{ ...samples[0]!, location }], 1, { values: { 'resting.heartRateWarningUpper': 105 } });
+  expect(sent).toMatchObject({ risk: { level: 'abnormal', evidence }, latest: { heartRate: 110 }, baselineVersion: 1 });
+  const payload = JSON.stringify(sent);
+  expect(payload).not.toContain('private-home');
+  db.close();
+});
 
 it('reviews an ordinary episode once, persists observation, and asks after the deadline', async () => {
   const db = openDatabase(':memory:');

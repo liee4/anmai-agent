@@ -3,8 +3,18 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import type { EmergencyEvent } from '@anmai/contracts';
 import { EmergencyCard } from '../src/app/EmergencyCard.js';
 import { RiskReviewStatus } from '../src/app/RiskReviewStatus.js';
+import { RiskEvidenceSummary } from '../src/app/RiskEvidenceSummary.js';
 
 const event: EmergencyEvent = { eventId: 'demo-event-123', wearerId: 'demo-wearer', state: 'primary_contact', stateVersion: 2, createdAt: '2026-11-04T00:00:00Z', deadlineAt: '2026-11-04T00:00:30Z', timerSettings: { wearerResponseSeconds: 60, primaryRelativeSeconds: 30, otherRelativesSeconds: 30, safeRecheckSeconds: 300 }, baselineVersion: 1, location: null, risk: { level: 'worsening', score: 10, reasons: ['fixed_heart_rate_high'], assessedAt: '2026-11-04T00:00:00Z' } };
+
+it('shows channel quality and duration without a total risk score', () => {
+  const html = renderToStaticMarkup(<RiskEvidenceSummary risk={{ level: 'abnormal', reasons: ['heart_rate_persistent'], assessedAt: '2026-11-04T00:00:00Z', evidence: { context: 'resting', quality: { heartRate: 'valid', spo2: 'missing', bloodPressure: 'missing' }, values: { heartRate: 110 }, deviation: { heartRateHigh: 3.2 }, coverageSeconds: { heartRate: 10, spo2: 0 }, abnormalSeconds: { heartRate: 27, spo2: 0 }, trend: 'none', fixedBoundary: false } }} />);
+  expect(html).toContain('心率有效');
+  expect(html).toContain('持续异常 27/30 秒');
+  expect(html).toContain('最近覆盖 10/10 秒');
+  expect(html).toContain('血氧未采集');
+  expect(html).not.toContain('风险分数');
+});
 
 it('shows model observation and keeps the wearer help control available', () => {
   const html = renderToStaticMarkup(<RiskReviewStatus review={{ status: 'observe', provider: 'deepseek', decision: 'observe', reason: '继续复测', deadlineAt: '2026-11-04T00:00:30Z', fallbackReason: null }} risk={event.risk} seconds={12} busy={false} onHelp={() => undefined} />);

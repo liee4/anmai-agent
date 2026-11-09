@@ -2,18 +2,42 @@ import type { VitalSample } from '@anmai/contracts';
 import { median } from './sliding-window.js';
 import { demoThresholds } from './detection-config.js';
 
-export interface SecondVital {
-  at: number;
-  heartRate: number;
-  spo2: number;
+export interface MetricSecond { at: number; value: number }
+
+export function conflictingSeconds(samples: VitalSample[], metric: 'heartRate' | 'spo2'): Set<number> {
+  const values = new Map<number, number[]>();
+  const conflicts = new Set<number>();
+  const byTimestamp = new Map<string, number>();
+  const maxRange = metric === 'heartRate' ? demoThresholds.maxWithinSecondHeartRateRange : demoThresholds.maxWithinSecondSpo2Range;
+  for (const sample of samples) {
+    const value = sample[metric];
+    if (value === undefined) continue;
+    const at = Math.floor(Date.parse(sample.timestamp) / 1000) * 1000;
+    if (!Number.isFinite(at)) continue;
+    if (sample.deviceTrusted === false || !Number.isFinite(value) || (metric === 'heartRate' ? value < 30 || value > 240 : value < 70 || value > 100)) {
+      conflicts.add(at);
+      continue;
+    }
+    const previous = byTimestamp.get(sample.timestamp);
+    if (previous !== undefined && previous !== value) conflicts.add(at);
+    byTimestamp.set(sample.timestamp, value);
+    const bucket = values.get(at) ?? [];
+    bucket.push(value);
+    values.set(at, bucket);
+  }
+  for (const [at, bucket] of values) if (Math.max(...bucket) - Math.min(...bucket) > maxRange) conflicts.add(at);
+  return conflicts;
 }
 
 /** One observation per elapsed second, regardless of device sampling rate. */
-export function secondVitals(samples: VitalSample[], usable: (sample: VitalSample) => boolean): SecondVital[] {
+export function metricSeconds(samples: VitalSample[], metric: 'heartRate' | 'spo2'): MetricSecond[] {
   const bySecond = new Map<number, VitalSample[]>();
   const timestamps = new Set<string>();
   for (const sample of samples) {
-    if (!usable(sample) || timestamps.has(sample.timestamp)) continue;
+    const value = sample[metric];
+    if (sample.deviceTrusted === false || value === undefined || !Number.isFinite(value) ||
+      (metric === 'heartRate' ? value < 30 || value > 240 : value < 70 || value > 100) ||
+      timestamps.has(sample.timestamp)) continue;
     timestamps.add(sample.timestamp);
     const at = Math.floor(Date.parse(sample.timestamp) / 1000) * 1000;
     if (!Number.isFinite(at)) continue;
@@ -22,12 +46,10 @@ export function secondVitals(samples: VitalSample[], usable: (sample: VitalSampl
     bySecond.set(at, bucket);
   }
   return [...bySecond.entries()].filter(([, bucket]) => {
-    const heartRates = bucket.map(sample => sample.heartRate!);
-    const oxygen = bucket.map(sample => sample.spo2!);
-    return Math.max(...heartRates) - Math.min(...heartRates) <= demoThresholds.maxWithinSecondHeartRateRange && Math.max(...oxygen) - Math.min(...oxygen) <= demoThresholds.maxWithinSecondSpo2Range;
+    const values = bucket.map(sample => sample[metric]!);
+    return Math.max(...values) - Math.min(...values) <= (metric === 'heartRate' ? demoThresholds.maxWithinSecondHeartRateRange : demoThresholds.maxWithinSecondSpo2Range);
   }).sort(([a], [b]) => a - b).map(([at, bucket]) => ({
     at,
-    heartRate: median(bucket.map(sample => sample.heartRate!))!,
-    spo2: median(bucket.map(sample => sample.spo2!))!,
+    value: median(bucket.map(sample => sample[metric]!))!,
   }));
 }
