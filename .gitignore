@@ -8,3 +8,7 @@ apps/api/data/
 coverage/
 test-results/
 playwright-report/
+presentation/build/previews/
+presentation/build/*.pptx
+presentation/build/*.inspect.ndjson
+presentation/build/validation*.json
