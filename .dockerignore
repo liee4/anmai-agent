@@ -3,6 +3,8 @@ node_modules
 **/dist
 **/data/*
 !apps/api/data/bidmc_01_Numerics.csv
+!apps/api/data/bidmc_21_Numerics.csv
+!apps/api/data/bidmc_32_Numerics.csv
 test-results
 .git
 .env

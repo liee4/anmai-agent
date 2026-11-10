@@ -19,12 +19,14 @@ async function ready(url, process, label) {
   throw new Error(`${label} did not start within 10 seconds`);
 }
 
-if (await portOpen(3000) || await portOpen(5173)) throw new Error('E2E requires ports 3000 and 5173 to be free; stop other local servers first.');
-const api = spawn(process.execPath, ['apps/api/dist/main.js'], { stdio: 'inherit', env: { ...process.env, DATABASE_PATH: ':memory:', RISK_OBSERVATION_SECONDS: '1', PUBLIC_DEMO: '1', DEMO_ACCESS_TOKEN: 'e2e-demo-access-token-2026-11-05-test-only', DEEPSEEK_API_KEY: 'e2e-placeholder-never-used', BASELINE_PROVIDER: 'fake', RISK_REVIEW_PROVIDER: 'fake', MESSAGE_PROVIDER: 'fake' } });
-const web = spawn(process.execPath, ['apps/web/node_modules/vite/bin/vite.js', 'apps/web', '--host', '127.0.0.1'], { stdio: 'inherit' });
+const apiPort = Number(process.env.E2E_API_PORT ?? 3000);
+const webPort = Number(process.env.E2E_WEB_PORT ?? 5173);
+if (await portOpen(apiPort) || await portOpen(webPort)) throw new Error(`E2E requires ports ${apiPort} and ${webPort} to be free; stop other local servers first.`);
+const api = spawn(process.execPath, ['apps/api/dist/main.js'], { stdio: 'inherit', env: { ...process.env, PORT: String(apiPort), DATABASE_PATH: ':memory:', RISK_OBSERVATION_SECONDS: '1', PUBLIC_DEMO: '1', DEMO_ACCESS_TOKEN: 'e2e-demo-access-token-2026-11-05-test-only', DEEPSEEK_API_KEY: 'e2e-placeholder-never-used', BASELINE_PROVIDER: 'fake', RISK_REVIEW_PROVIDER: 'fake', MESSAGE_PROVIDER: 'fake' } });
+const web = spawn(process.execPath, ['apps/web/node_modules/vite/bin/vite.js', 'apps/web', '--host', '127.0.0.1', '--port', String(webPort)], { stdio: 'inherit', env: { ...process.env, ANMAI_API_PORT: String(apiPort) } });
 try {
-  await Promise.all([ready('http://127.0.0.1:3000/api/health', api, 'API'), ready('http://127.0.0.1:5173', web, 'Web')]);
-  const tests = spawn(process.execPath, ['node_modules/@playwright/test/cli.js', 'test'], { stdio: 'inherit' });
+  await Promise.all([ready(`http://127.0.0.1:${apiPort}/api/health`, api, 'API'), ready(`http://127.0.0.1:${webPort}`, web, 'Web')]);
+  const tests = spawn(process.execPath, ['node_modules/@playwright/test/cli.js', 'test', ...process.argv.slice(2)], { stdio: 'inherit', env: { ...process.env, E2E_BASE_URL: `http://127.0.0.1:${webPort}` } });
   const code = await new Promise(resolve => tests.once('exit', resolve));
   if (code !== 0) process.exitCode = code || 1;
 } finally {

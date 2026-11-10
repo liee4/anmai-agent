@@ -112,7 +112,7 @@ export function App() {
   }
 
   function chooseJourney(journey: Journey) {
-    if (journey === 'publicdata') { replayPublicData(0); return; }
+    if (journey === 'publicdata') { replayPublicData('01', 0); return; }
     const scenario = scenarioFor[journey];
     if (!scenario) { setSelected(journey); setLastInput(null); setPublicReplay(null); setResult(''); try { sessionStorage.setItem(`anmai-journey:${wearerId}`, JSON.stringify({ journey })); } catch { /* Optional browser state. */ } return; }
     setResult('');
@@ -126,10 +126,10 @@ export function App() {
     });
   }
 
-  function replayPublicData(startSecond: number) {
+  function replayPublicData(recordId: '01' | '21' | '32', startSecond: number) {
     setResult('');
     void run(async () => {
-      const response = await api.publicReplay(wearerId, startSecond);
+      const response = await api.publicReplay(wearerId, recordId, startSecond);
       setSelected('publicdata');
       setPublicReplay(response);
       const last = response.rows.at(-1);
@@ -143,7 +143,16 @@ export function App() {
   function act(kind: string) {
     const event = dashboard?.event;
     if (!event) return;
-    void run(() => api.action(event, kind));
+    void run(async () => {
+      await api.action(event, kind);
+      if (kind !== 'close') return;
+      setSelected('baseline');
+      setLastInput(null);
+      setPublicReplay(null);
+      setResult('本次模拟事件已结束。请选择下一个患者情景。');
+      try { sessionStorage.setItem(`anmai-journey:${wearerId}`, JSON.stringify({ journey: 'baseline' })); } catch { /* Optional browser state. */ }
+      requestAnimationFrame(() => document.querySelector('.journeys')?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
+    });
   }
 
   const event = dashboard?.event;

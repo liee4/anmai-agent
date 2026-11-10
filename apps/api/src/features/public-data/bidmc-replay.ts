@@ -50,14 +50,28 @@ const rawFile = readFileSync(dataUrl);
 if (createHash('sha256').update(rawFile).digest('hex') !== source.sha256) throw new Error('BIDMC source file checksum mismatch');
 export const bidmcRecord = { source, rows: parseBidmcNumerics(rawFile.toString('utf8')) };
 
-export function replayBidmcWindow(startSecond: number, endingAt: Date): { source: typeof source; rows: BidmcRow[]; samples: VitalSample[]; replayedAt: string } {
-  if (!Number.isInteger(startSecond) || startSecond < 0 || startSecond + 35 > bidmcRecord.rows.length) throw new Error('Invalid startSecond');
-  const rows = bidmcRecord.rows.slice(startSecond, startSecond + 35);
+const extraChecksums = {
+  '21': 'be4102f8b9aad57f2c286b0a3d7fbef55474234ea2c5ab769232dd6fd13e51f6',
+  '32': '1a9bb8fdde296519c2a265a2e73fab2e6b74ad63080960cdf0afbbb5668fd232',
+} as const;
+export type BidmcRecordId = '01' | keyof typeof extraChecksums;
+export function isBidmcRecordId(value: string): value is BidmcRecordId { return value === '01' || value in extraChecksums; }
+
+const extraRecords = Object.fromEntries(Object.entries(extraChecksums).map(([id, sha256]) => {
+  const bytes = readFileSync(new URL(`../../../data/bidmc_${id}_Numerics.csv`, import.meta.url));
+  if (createHash('sha256').update(bytes).digest('hex') !== sha256) throw new Error(`BIDMC ${id} source file checksum mismatch`);
+  return [id, { source: { ...source, recordId: `bidmc_${id}`, url: `https://physionet.org/content/bidmc/1.0.0/bidmc_csv/bidmc_${id}_Numerics.csv`, sha256 }, rows: parseBidmcNumerics(bytes.toString('utf8')) }];
+})) as Record<keyof typeof extraChecksums, { source: { recordId: string; url: string; sha256: string; dataset: string; version: string; originalSamplingHz: number; setting: string; license: string }; rows: BidmcRow[] }>;
+
+export function replayBidmcWindow(startSecond: number, endingAt: Date, recordId: BidmcRecordId = '01') {
+  const record = recordId === '01' ? bidmcRecord : extraRecords[recordId];
+  if (!Number.isInteger(startSecond) || startSecond < 0 || startSecond + 35 > record.rows.length) throw new Error('Invalid startSecond');
+  const rows = record.rows.slice(startSecond, startSecond + 35);
   const samples = rows.map((row, index): VitalSample => ({
     timestamp: new Date(endingAt.getTime() - (34 - index) * 1000).toISOString(),
     ...(row.heartRate === undefined ? {} : { heartRate: row.heartRate }),
     ...(row.spo2 === undefined ? {} : { spo2: row.spo2 }),
     activity: 'unknown',
   }));
-  return { source, rows, samples, replayedAt: endingAt.toISOString() };
+  return { source: record.source, rows, samples, replayedAt: endingAt.toISOString() };
 }

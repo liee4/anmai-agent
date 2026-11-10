@@ -42,6 +42,21 @@ test('replays attributed public measurements without baseline learning', async (
   await expect(page.locator('.public-replay-details a')).toHaveAttribute('href', /physionet\.org/);
 });
 
+test('replays measured abnormal data through simulated relative contact', async ({ page }) => {
+  await page.getByRole('button', { name: '回放真实高心率' }).click();
+  await expect(page.locator('.public-replay-details')).toContainText('bidmc_21');
+  await expect(page.locator('.guided-main h2')).toHaveText('等待主要亲属接管');
+  await expect(page.locator('.guided-main')).toContainText('已跳过模型等待');
+  await page.getByRole('button', { name: '亲属已接管' }).click();
+  await page.getByRole('button', { name: '结束模拟事件' }).click();
+  await expect(page.locator('.journey-options button.active')).toHaveText('个人基线');
+  await page.getByRole('button', { name: '回放真实低血氧' }).click();
+  await expect(page.locator('.public-replay-details')).toContainText('bidmc_32');
+  await expect(page.locator('.guided-main h2')).toHaveText('等待主要亲属接管');
+  await page.getByRole('button', { name: '亲属已接管' }).click();
+  await page.getByRole('button', { name: '结束模拟事件' }).click();
+});
+
 test('shows model observation, wearer response and relative contact', async ({ page }) => {
   await firstBaseline(page);
   await page.getByRole('button', { name: '异常 · 有回应' }).click();
@@ -81,6 +96,19 @@ test('shows a text interpretation before the wearer confirms an emergency action
   await expect(page.locator('.guided-main h2')).toHaveText('等待主要亲属接管');
   await page.getByRole('button', { name: '亲属已接管' }).click();
   await page.getByRole('button', { name: '结束模拟事件' }).click();
+});
+
+test('returns to scenario selection after ending a simulated event', async ({ page }) => {
+  await firstBaseline(page);
+  await page.getByRole('button', { name: '明显恶化', exact: true }).click();
+  await expect(page.locator('.guided-main h2')).toHaveText('等待主要亲属接管');
+  await page.getByRole('button', { name: '亲属已接管' }).click();
+  await page.getByRole('button', { name: '结束模拟事件' }).click();
+  await expect(page.locator('.journey-options button.active')).toHaveText('个人基线');
+  await expect(page.locator('.guided-main h2')).toHaveText('输入一段模拟实时体征');
+  await expect(page.getByRole('button', { name: '正常静息' })).toBeEnabled();
+  await page.reload();
+  await expect(page.locator('.journey-options button.active')).toHaveText('个人基线');
 });
 
 test('distinguishes normal activity and untrusted device data', async ({ page }) => {

@@ -7,6 +7,6 @@ COPY apps/web/package.json apps/web/package.json
 COPY packages/contracts/package.json packages/contracts/package.json
 RUN pnpm install --frozen-lockfile
 COPY . .
-RUN test -s apps/api/data/bidmc_01_Numerics.csv && pnpm build
+RUN test -s apps/api/data/bidmc_01_Numerics.csv && test -s apps/api/data/bidmc_21_Numerics.csv && test -s apps/api/data/bidmc_32_Numerics.csv && pnpm build
 ENV NODE_ENV=production
 CMD ["node", "apps/api/dist/main.js"]

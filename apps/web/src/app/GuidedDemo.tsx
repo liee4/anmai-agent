@@ -50,8 +50,8 @@ function flowState(index: number, stage: number, hasBaseline: boolean, severe: b
   return { className: '', label: '等待进行' };
 }
 
-function scenarioPreset(key: Journey, input: DemoInput | null): string | null {
-  if (key === 'publicdata') return 'PhysioNet BIDMC bidmc_01：真实床旁监护数值，活动与血压未采集';
+function scenarioPreset(key: Journey, input: DemoInput | null, replay: PublicReplay | null): string | null {
+  if (key === 'publicdata') return `PhysioNet BIDMC ${replay?.source.recordId ?? '原始记录'}：真实床旁监护数值，活动与血压未采集`;
   if (input && key !== 'baseline') return `本次模拟输入：心率 ${input.heartRate} 次/分 · 血氧 ${input.spo2}%${input.activity === 'activity' ? ' · 活动标记' : ''}`;
   if (key === 'rest') return '演示预设：静息体征按当前基线生成';
   if (key === 'activity') return '演示预设：活动体征按当前基线生成';
@@ -93,7 +93,7 @@ export function GuidedDemo({ dashboard, selected, demoInput, publicReplay, resul
   onFillNext: () => void;
   onImportRaw: () => void;
   onSelect: (journey: Journey) => void;
-  onPublicReplay: (startSecond: number) => void;
+  onPublicReplay: (recordId: '01' | '21' | '32', startSecond: number) => void;
   onImportNext: () => void;
   onReset: () => void;
   onResume: () => void;
@@ -107,7 +107,7 @@ export function GuidedDemo({ dashboard, selected, demoInput, publicReplay, resul
   const stage = stageOf(dashboard, selected);
   const reviewSeconds = secondsLeft(review?.deadlineAt ?? null);
   const eventSeconds = secondsLeft(event?.deadlineAt ?? null);
-  const preset = scenarioPreset(selected, demoInput);
+  const preset = scenarioPreset(selected, demoInput, publicReplay);
   const activeReview = Boolean(review && !['closed', 'cancelled'].includes(review.status));
   const resting = dashboard.baseline?.baseline.observations?.find(item => item.context === 'resting');
   const activity = dashboard.baseline?.baseline.observations?.find(item => item.context === 'activity');

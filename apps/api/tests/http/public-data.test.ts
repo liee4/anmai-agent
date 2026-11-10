@@ -31,4 +31,21 @@ describe('public recorded data replay API', () => {
       expect(response.statusCode).toBe(400);
     } finally { await app.close(); db.close(); }
   });
+
+  it.each([
+    ['21', 'fixed_heart_rate_high'],
+    ['32', 'fixed_spo2_low'],
+  ])('runs a genuine BIDMC %s abnormal window through the emergency flow', async (recordId, reason) => {
+    const db = openDatabase(':memory:');
+    const app = buildApp({ db, clock: new FakeClock(new Date('2026-11-10T10:00:00Z')) });
+    try {
+      const response = await app.inject({ method: 'POST', url: `/api/public-data/bidmc/${recordId}/replay`, payload: { wearerId: 'demo-wearer', startSecond: 100 } });
+      expect(response.statusCode).toBe(200);
+      const body = response.json();
+      expect(body.source.recordId).toBe(`bidmc_${recordId}`);
+      expect(body.risk).toMatchObject({ level: 'worsening', reasons: [reason], evidence: { context: 'unknown', fixedBoundary: true } });
+      expect(body.event).toMatchObject({ state: 'primary_contact' });
+      expect((db.raw.prepare('SELECT COUNT(*) AS count FROM ingested_samples').get() as { count: number }).count).toBe(0);
+    } finally { await app.close(); db.close(); }
+  });
 });

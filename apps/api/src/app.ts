@@ -27,7 +27,7 @@ import { MessageService } from './features/agent/message-service.js';
 import { FakeMessageProvider } from './features/agent/fake-message-provider.js';
 import type { MessageProvider } from './features/agent/message-provider.js';
 import type { DemoSessions } from './features/demo/demo-session.js';
-import { replayBidmcWindow } from './features/public-data/bidmc-replay.js';
+import { isBidmcRecordId, replayBidmcWindow } from './features/public-data/bidmc-replay.js';
 import { knowledgeCatalog, knowledgeForRisk } from './features/knowledge/evidence-library.js';
 import { interpretWearerText } from './features/emergency/wearer-text.js';
 
@@ -192,11 +192,12 @@ export function buildApp({ db, clock, baselineProvider = new FakeBaselineProvide
     const latest = samples.at(-1)!;
     return { ...result, demoInput: { heartRate: latest.heartRate, spo2: latest.spo2, activity: latest.activity } };
   });
-  app.post('/api/public-data/bidmc/01/replay', async (request, reply) => {
+  app.post('/api/public-data/bidmc/:recordId/replay', async (request, reply) => {
+    const { recordId } = request.params as { recordId: string };
     const body = request.body as { wearerId?: string; startSecond?: number } | null;
-    if (!body?.wearerId || !Number.isInteger(body.startSecond)) return reply.code(400).send({ code: 'INVALID_PUBLIC_REPLAY', message: 'wearerId and integer startSecond are required' });
+    if (!isBidmcRecordId(recordId) || !body?.wearerId || !Number.isInteger(body.startSecond)) return reply.code(400).send({ code: 'INVALID_PUBLIC_REPLAY', message: 'Known recordId, wearerId and integer startSecond are required' });
     try {
-      const replay = replayBidmcWindow(body.startSecond!, clock.now());
+      const replay = replayBidmcWindow(body.startSecond!, clock.now(), recordId);
       const assessed = await evaluate(body.wearerId, replay.samples, 'public_replay');
       return { ...assessed, source: replay.source, rows: replay.rows, replayedAt: replay.replayedAt };
     } catch (error) {
