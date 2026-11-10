@@ -14,3 +14,4 @@ presentation/build/*.pptx
 presentation/build/*.inspect.ndjson
 presentation/build/validation*.json
 presentation/build/competition-validation.json
+presentation/output/archive/

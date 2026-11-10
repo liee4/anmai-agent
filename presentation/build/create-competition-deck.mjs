@@ -79,35 +79,36 @@ async function addImage(s, filename, x, y, w, h, alt) {
 
 // 03 Current inputs and acquisition channels
 {
-  const s = slide('数据渠道：当前模拟输入，公开数据待接入', 3, '二 数据收集与处理 · 数据来源');
-  row(s, 177, 'A', '当前已使用', '程序生成逐秒情景体征与逐日历史数据；便于重复演示');
-  row(s, 298, 'B', 'PhysioNet', 'BIDMC 同步心率/血氧；BUT PPG 提供信号质量标签');
-  row(s, 419, 'C', 'UCI 数据库', 'PPG-DaLiA 提供腕部 PPG、加速度与活动片段');
-  text(s, '获取方式：当前经页面/API 导入模拟 JSON；公开数据仅完成来源核查，尚未下载入库。', 82, 555, 1100, 80, 24, C.teal, true);
-  caption(s, '核查日期 2026-11-10；数据集发布时间分别为 2018、2024、2019 年。', 638);
-  s.speakerNotes.text = 'BIDMC: https://physionet.org/content/bidmc/1.0.0/ ; BUT PPG: https://physionet.org/content/butppg/2.0.0/ ; PPG-DaLiA: https://archive.ics.uci.edu/dataset/495/ppg%2Bdalia . 这些发布机构提供版本、字段、下载和许可说明；截至 2026-11-10 已核查发布页，尚未下载原始记录。';
+  const s = slide('数据渠道：模拟历史与真实记录回放', 3, '二 数据收集与处理 · 数据来源');
+  row(s, 177, 'A', '模拟历史', '程序生成逐秒情景体征与逐日历史数据；用于可重复演示');
+  row(s, 298, 'B', 'PhysioNet BIDMC', '已纳入 bidmc_01 原始数值记录；481 秒、1 Hz，可回放心率与血氧');
+  row(s, 419, 'C', '后续候选', 'UCI PPG-DaLiA 的活动数据；PhysioNet BUT PPG 的质量标签');
+  text(s, '获取方式：模拟 JSON 经统一入口导入；BIDMC 文件保留原始哈希与许可，按 35 秒窗口回放。', 82, 555, 1100, 80, 23, C.teal, true);
+  caption(s, 'BIDMC 是医院床旁记录，不代表居家高风险老年人的真实病程。', 638, C.coral);
+  s.speakerNotes.text = 'BIDMC: https://physionet.org/content/bidmc/1.0.0/ 。已纳入 bidmc_01_Numerics.csv，原文件 SHA-256: 27d43794cf2e7150db10e8bfe61d2bfdb26873a8f1629ffc5fbee5c9a4eb6ef5，ODC-By 许可。BUT PPG 与 PPG-DaLiA 只核查来源，未接入。';
 }
 
 // 04 Dataset authority and limits
 {
-  const s = slide('三份候选数据各解决一个验证问题', 4, '二 数据收集与处理 · 数据来源');
-  row(s, 175, '01', 'BIDMC', 'PhysioNet 开放数据；53 段、每段 8 分钟；适合多体征对齐');
+  const s = slide('一份已接入记录，两份待验证候选', 4, '二 数据收集与处理 · 数据来源');
+  row(s, 175, '01', 'BIDMC 已接入', 'PhysioNet 开放数据；回放 bidmc_01 数值，保留 13 秒血氧缺测');
   row(s, 297, '02', 'PPG-DaLiA', 'UCI 收录、15 名受试者；适合活动干扰与腕部心率回放');
   row(s, 419, '03', 'BUT PPG', 'PhysioNet v2；3,888 段 10 秒片段；适合质量门控验证');
   text(s, '限制：住院、活动实验和手机 PPG 均不能直接代表居家高风险老年人。', 83, 552, 1100, 76, 25, C.coral, true);
-  caption(s, '版本与可用字段据官方发布页；数据接入与目标人群性能评估仍未完成。', 637);
-  s.speakerNotes.text = 'BIDMC: https://physionet.org/content/bidmc/1.0.0/ ; PPG-DaLiA: https://archive.ics.uci.edu/dataset/495/ppg%2Bdalia ; BUT PPG: https://physionet.org/content/butppg/2.0.0/ . 注意：BUT 的血压/血氧只是单值标注，不能当连续腕戴时序；三份数据不能拼成同一人的真实病程。';
+  caption(s, '回放只测试数据接入和判断路径；目标人群的误报、漏报仍无数据可评估。', 637);
+  s.speakerNotes.text = 'BIDMC: https://physionet.org/content/bidmc/1.0.0/ ，已纳入 bidmc_01 原始数值记录。PPG-DaLiA: https://archive.ics.uci.edu/dataset/495/ppg%2Bdalia ; BUT PPG: https://physionet.org/content/butppg/2.0.0/ ，两者尚未接入。BUT 的血压/血氧只是单值标注，不能当连续腕戴时序；三份数据不能拼成同一人的真实病程。';
 }
 
 // 05 Knowledge layer
 {
-  const s = slide('知识库现状：规则知识已编码，外部知识待引入', 5, '二 数据收集与处理 · 知识库内容');
-  pair(s, 82, 183, 495, '已实现的最小知识层', '演示固定边界、数据可信条件、30 秒持续异常、人工回应与亲属升级规则。');
-  pair(s, 662, 183, 505, '尚未接入的行业知识', '临床指南、设备测量规范、急救机构流程与版本化引用，未来需专家审核后引入。', C.coral);
+  const s = slide('行业知识已标注来源，临床审核待完成', 5, '二 数据收集与处理 · 知识库内容');
+  pair(s, 82, 183, 495, '可执行规则', '数据可信度、持续异常、固定安全边界、本人回应与亲属升级由代码控制。');
+  pair(s, 662, 183, 505, '版本化参考知识', '三条官方来源：心脏症状、血氧仪局限、脑卒中诊疗指南；当前只选取心脏与血氧条目。', C.teal);
   rule(s, 82, 450, 1083, C.line, 1);
   text(s, 'Agent 的使用方式', 82, 476, 330, 43, 22, C.teal, true);
-  text(s, '代码规则限定可执行动作；DeepSeek 只读取经整理的证据，生成候选阈值、普通异常复核和事件文案。', 82, 528, 1090, 88, 26);
-  caption(s, '当前没有可检索的医学 RAG 知识库，也没有指南自动更新机制。', 637, C.coral);
+  text(s, '普通异常复核接收相关参考条目与体征证据；参考知识只辅助解释，不修改阈值或直接触发升级。', 82, 528, 1090, 88, 25);
+  caption(s, '来源已核对，尚未经临床专家审核；没有指南自动更新机制。', 637, C.coral);
+  s.speakerNotes.text = '心脏症状：https://www.nhc.gov.cn/xcs/c100122/202511/b622555670fa4f2388eb35f1c339195f.shtml ；血氧仪局限：https://www.fda.gov/medical-devices/products-and-medical-procedures/pulse-oximeters ；卒中指南：https://www.nhc.gov.cn/ylyjs/zcwj/202412/ba037e931fff4870930f65ff667ea9ed/files/1736390751587_80714.pdf 。卒中条目目前仅在目录中，因为系统没有面瘫、肢体或语言症状输入。';
 }
 
 // 06 Preprocessing diagram
@@ -116,8 +117,8 @@ async function addImage(s, filename, x, y, w, h, alt) {
   text(s, '体征数据：统一入口自动识别逐日与历史导入', 83, 165, 1090, 35, 21, C.teal, true);
   const data = [['输入识别', '逐日 / 历史 Adapter'], ['规范化', '时间、字段、活动标记'], ['质量与聚合', '缺测、冲突、分钟中位数'], ['分流利用', '14 天基线 / 实时风险']];
   data.forEach((item, i) => { const x = 83 + i * 273; flowBox(s, x, 207, 231, 111, item[0], item[1]); if (i < 3) text(s, '→', x + 238, 245, 32, 40, 24, C.teal, true); });
-  text(s, '知识处理：项目规则已编码，外部医学指南待接入', 83, 354, 1090, 35, 21, C.teal, true);
-  const knowledge = [['规则整理', '演示边界与升级条件'], ['来源登记', '发布机构、版本与许可待接入'], ['专家审核', '适用场景与设备差异待核查'], ['受控使用', '代码约束模型与工具动作']];
+  text(s, '知识处理：官方来源按风险原因进入模型复核', 83, 354, 1090, 35, 21, C.teal, true);
+  const knowledge = [['来源登记', '机构、链接与版本'], ['范围匹配', '心脏与血氧条目按需选取'], ['审核状态', '已核对来源，待临床审核'], ['受控使用', '只供解释，不改变动作权限']];
   knowledge.forEach((item, i) => { const x = 83 + i * 273; flowBox(s, x, 395, 231, 111, item[0], item[1], i === 1 || i === 2 ? C.coral : C.teal); if (i < 3) text(s, '→', x + 238, 433, 32, 40, 24, C.teal, true); });
   rule(s, 83, 541, 1090, C.line, 1);
   text(s, '共同输出：带来源的证据、排除原因与事件审计；不舒服期间暂停基线学习。', 83, 566, 1090, 75, 24, C.ink, true);
@@ -174,7 +175,7 @@ async function addImage(s, filename, x, y, w, h, alt) {
   flowBox(s, 930, 397, 245, 99, '人工反馈', '不舒服则联系亲属');
   rule(s, 319, 309, 152, C.line, 2); rule(s, 319, 447, 152, C.line, 2);
   rule(s, 793, 309, 137, C.line, 2); rule(s, 793, 447, 137, C.line, 2);
-  text(s, '本人 60 秒回应；主要亲属 30 秒接管。等待时间可在事件开始前设置。', 83, 554, 1090, 67, 23, C.teal, true);
+  text(s, '模型观察、本人回应和亲属接管时间均可设置；事件开始后锁定本次计时。', 83, 554, 1090, 67, 23, C.teal, true);
   caption(s, '演示结果可复现；真实误报率和抢救收益尚无验证数据。', 638, C.coral);
 }
 
@@ -210,14 +211,14 @@ async function addImage(s, filename, x, y, w, h, alt) {
 {
   const s = slide('原型结果：本人求助后进入亲属接管', 14, '五 结果解释与建议 · 结果解读');
   await addImage(s, 'demo-glass-relative.png', 82, 171, 1110, 450, '本地模拟原型：亲属接管与紧急事件卡摘要');
-  caption(s, '事件卡含体征、本人反馈和模拟位置；通知送达与接管均为本地模拟。', 638);
+  caption(s, '事件卡含体征、本人反馈与预设演示位置；真实设备定位尚未接入。', 638);
 }
 
 // 15 Problems and recommendations: data and algorithm
 {
-  const s = slide('问题与建议：先补真实数据和模型验证', 15, '五 结果解释与建议 · 问题与建议');
-  row(s, 175, '01', '公开数据未接入', '建立单记录回放，保留来源、设备类型、标签与许可');
-  row(s, 297, '02', '阈值仅供演示', '用真实样本评估误报、漏报和不同活动条件表现');
+  const s = slide('问题与建议：补足数据代表性和模型验证', 15, '五 结果解释与建议 · 问题与建议');
+  row(s, 175, '01', '数据覆盖有限', '已接入一条 BIDMC 床旁记录；后续增加腕戴与活动数据');
+  row(s, 297, '02', '阈值仅供演示', '取得去标识化事件标签后，评估误报、漏报与分人群表现');
   row(s, 419, '03', '基线模型待选型', '保持 Provider 接口，比较可解释性、稳定性和失败回退');
   text(s, '重点：不能把跨数据集片段拼成同一位老人的真实病程。', 83, 566, 1090, 66, 25, C.coral, true);
 }
@@ -244,9 +245,9 @@ async function addImage(s, filename, x, y, w, h, alt) {
 // 18 Interaction interface
 {
   const s = slide('应用交互：佩戴者与亲属在事件中给出回应', 18, '六 应用结果呈现 · 应用对话界面');
-  text(s, '当前采用按钮式状态确认，反馈会写入事件并触发下一轮 Agent 决策。', 82, 168, 1090, 62, 25);
+  text(s, '本人可选择固定按钮，也可输入简短文字；系统先给出理解结果，再由本人确认。', 82, 168, 1090, 62, 25);
   await addImage(s, 'demo-glass-wearer.png', 86, 245, 1090, 371, '佩戴者确认界面，包含我不舒服与我没事两个操作');
-  caption(s, '界面可现场操作；尚未提供自由文本聊天或语音识别输入。', 639, C.coral);
+  caption(s, '受控词句匹配不能理解任意表达；确认前不推进事件，语音识别尚未接入。', 639, C.coral);
 }
 
 // 19 Prompts and link
