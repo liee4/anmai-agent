@@ -17,7 +17,6 @@ const journeys: { key: Journey; label: string; description: string }[] = [
   { key: 'noanswer', label: '异常 · 无回应', description: '提醒到期仍无回应：依次联系亲属，无人接管才模拟呼救。' },
   { key: 'worsening', label: '明显恶化', description: '触及固定安全边界：警告佩戴者并立即联系主要亲属，跳过模型等待。' },
   { key: 'device', label: '设备松动', description: '数据不可信：提示检查设备，不启动亲属联系。' },
-  { key: 'publicdata', label: '真实数据回放', description: '回放 PhysioNet 的原始测量值；系统判断和应急流程仍是模拟。' },
 ];
 
 const stateLabels: Record<string, string> = {
@@ -140,7 +139,7 @@ export function GuidedDemo({ dashboard, selected, completed, demoInput, publicRe
     <section className="journeys" aria-label="患者情景">
       <div className="journeys-head"><h2>选择患者情景</h2></div>
       <div className="journey-options">{journeys.map(journey => <button key={journey.key} className={selected === journey.key ? 'active' : ''} aria-pressed={selected === journey.key} disabled={busy || (blocked && journey.key !== 'baseline' && journey.key !== 'worsening')} onClick={() => onSelect(journey.key)}>{journey.label}</button>)}</div>
-      <p className="journey-desc">{journeys.find(item => item.key === selected)?.description}{blocked && ' · 当前事件进行中，可结束事件或重置后切换其他情景。'}</p>
+      {selected !== 'publicdata' && <p className="journey-desc">{journeys.find(item => item.key === selected)?.description}{blocked && ' · 当前事件进行中，可结束事件或重置后切换其他情景。'}</p>}
     </section>
 
     <BaselineStrip dashboard={dashboard} busy={busy} wearerId={wearerId} rawInput={rawInput} inputRef={inputRef} onRawInputChange={onRawInputChange} onFillNext={onFillNext} onImportRaw={onImportRaw} onImportNext={onImportNext} onReset={onReset} onResume={onResume} />

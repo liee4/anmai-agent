@@ -9,7 +9,8 @@ async function firstBaseline(page: import('@playwright/test').Page) {
 
 test('guides repeated baseline imports and restarts after reset', async ({ page }) => {
   await expect(page.getByRole('heading', { name: '选择患者情景' })).toBeVisible();
-  await expect(page.locator('.journey-options button')).toHaveCount(8);
+  await expect(page.locator('.journey-options button')).toHaveCount(7);
+  await expect(page.locator('.journey-options')).not.toContainText('真实数据回放');
   await expect(page.getByRole('button', { name: '导入首轮 14 天', exact: true })).toHaveCount(1);
   await expect(page.locator('.advanced-details')).not.toContainText('导入并检查基线');
   await firstBaseline(page);
@@ -44,7 +45,7 @@ test('replays attributed public measurements without baseline learning', async (
 
 test('replays measured abnormal data through simulated relative contact', async ({ page }) => {
   await expect(page.getByRole('button', { name: '回放平稳记录' })).toHaveCount(0);
-  await page.getByRole('button', { name: '真实数据回放' }).click();
+  await page.getByRole('button', { name: '回放真实高心率' }).click();
   await expect(page.locator('.public-replay-details')).toContainText('bidmc_21');
   await expect(page.locator('.guided-main h2')).toHaveText('等待主要亲属接管');
   await expect(page.locator('.guided-main')).toContainText('已跳过模型等待');
