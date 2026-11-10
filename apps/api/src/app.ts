@@ -268,6 +268,7 @@ export function buildApp({ db, clock, baselineProvider = new FakeBaselineProvide
     const body = request.body as { stateVersion?: number; kind?: EmergencyCommand['kind'] };
     if (!Number.isInteger(body?.stateVersion) || !['wearer_unwell', 'wearer_safe', 'relative_takeover', 'relative_decline', 'worsening', 'normal_60s', 'close'].includes(body?.kind ?? '')) return reply.code(400).send({ code: 'INVALID_ACTION', message: 'Valid stateVersion and kind are required' });
     const result = await agent.handle({ kind: 'response', eventId, stateVersion: body.stateVersion!, command: { kind: body.kind! } });
+    if (result.ok && result.event?.state === 'closed') riskReview.close(result.event.wearerId);
     if (result.ok && result.event) { bus.publish('event', { wearerId: result.event.wearerId, event: result.event }); void messages.ensure(result.event).catch(() => undefined); }
     return reply.code(result.ok ? 200 : 409).send({ ok: result.ok, event: result.event, trace: result.trace });
   });

@@ -2,7 +2,7 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react
 import { api, type Dashboard, type DemoInput, type PublicReplay } from '../api/client.js';
 import { EventTimeline } from './EventTimeline.js';
 import { EmergencyCard } from './EmergencyCard.js';
-import { GuidedDemo, type Journey } from './GuidedDemo.js';
+import { GuidedDemo, type CompletedSimulation, type Journey } from './GuidedDemo.js';
 import { ProviderModePanel } from './ProviderModePanel.js';
 import { TimerPanel } from './TimerPanel.js';
 
@@ -29,6 +29,7 @@ export function App() {
   const [publicReplay, setPublicReplay] = useState<PublicReplay | null>(null);
   const [input, setInput] = useState('');
   const [result, setResult] = useState('');
+  const [completed, setCompleted] = useState<CompletedSimulation | null>(null);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -70,6 +71,7 @@ export function App() {
       const response = await api.ingest(JSON.parse(input));
       setInput(''); setInputViewRevision(value => value + 1);
       setSelected('baseline'); setLastInput(null);
+      setCompleted(null);
       setPublicReplay(null);
       try { sessionStorage.setItem(`anmai-journey:${wearerId}`, JSON.stringify({ journey: 'baseline' })); } catch { /* Optional browser state. */ }
       setResult(`导入覆盖 ${response.coveredDays} 天 · 有效 ${response.successfulDays} 天 · 完整周期 ${response.completedCycles} 个 · 当前基线 ${response.baselineVersion ? `v${response.baselineVersion}` : '尚无'}`);
@@ -84,6 +86,7 @@ export function App() {
       const response = await api.ingest(next);
       setInput(''); setInputViewRevision(value => value + 1);
       setSelected('baseline'); setLastInput(null);
+      setCompleted(null);
       setPublicReplay(null);
       try { sessionStorage.setItem(`anmai-journey:${wearerId}`, JSON.stringify({ journey: 'baseline' })); } catch { /* Optional browser state. */ }
       setResult(`${start} — ${end} 的模拟数据已导入；有效 ${response.successfulDays} 天，当前基线 ${response.baselineVersion ? `v${response.baselineVersion}` : '尚无'}${response.modelCalls === 0 ? '；本轮未调用基线模型' : `；模型调用 ${response.modelCalls} 次`}`);
@@ -104,6 +107,7 @@ export function App() {
       await api.resetDemo(wearerId);
       setInput(''); setInputViewRevision(value => value + 1);
       setSelected('baseline');
+      setCompleted(null);
       setLastInput(null);
       setPublicReplay(null);
       try { sessionStorage.removeItem(`anmai-journey:${wearerId}`); } catch { /* Optional browser state. */ }
@@ -112,7 +116,8 @@ export function App() {
   }
 
   function chooseJourney(journey: Journey) {
-    if (journey === 'publicdata') { replayPublicData('01', 0); return; }
+    setCompleted(null);
+    if (journey === 'publicdata') { replayPublicData('21', 100); return; }
     const scenario = scenarioFor[journey];
     if (!scenario) { setSelected(journey); setLastInput(null); setPublicReplay(null); setResult(''); try { sessionStorage.setItem(`anmai-journey:${wearerId}`, JSON.stringify({ journey })); } catch { /* Optional browser state. */ } return; }
     setResult('');
@@ -127,6 +132,7 @@ export function App() {
   }
 
   function replayPublicData(recordId: '01' | '21' | '32', startSecond: number) {
+    setCompleted(null);
     setResult('');
     void run(async () => {
       const response = await api.publicReplay(wearerId, recordId, startSecond);
@@ -146,12 +152,13 @@ export function App() {
     void run(async () => {
       await api.action(event, kind);
       if (kind !== 'close') return;
+      setCompleted({ risk: riskLabel[event.risk.level] ?? event.risk.level, review: event.risk.level === 'worsening' ? '固定安全规则直达' : dashboard?.riskReview ? `${dashboard.riskReview.provider} 复核后询问佩戴者` : '未调用模型', wearerFeedback: dashboard?.eventCard?.wearerFeedback ?? '未回应', outcome: event.state === 'relative_takeover' ? '亲属已接管' : '已进入模拟自动呼救' });
       setSelected('baseline');
       setLastInput(null);
       setPublicReplay(null);
-      setResult('本次模拟事件已结束。请选择下一个患者情景。');
+      setResult('');
       try { sessionStorage.setItem(`anmai-journey:${wearerId}`, JSON.stringify({ journey: 'baseline' })); } catch { /* Optional browser state. */ }
-      requestAnimationFrame(() => document.querySelector('.journeys')?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
+      requestAnimationFrame(() => document.querySelector('.completion-summary')?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
     });
   }
 
@@ -176,9 +183,9 @@ export function App() {
   return <div className="demo-shell">
     <header className="demo-header"><div className="demo-brand"><span className="brand-mark" aria-hidden="true">安</span><strong>安脉</strong></div><div className="header-right"><span>高风险老人 · 模拟佩戴者</span>{publicDemo && <ProviderModePanel onChange={() => void refresh()} />}</div></header>
     <main className="demo-content">
-      <div className="demo-title"><div><h1>一次异常体征，系统会怎样响应？</h1><p>跟随这条流程，看到从个人基线、风险判断到亲属接管的每一步。</p></div><span>模拟流程 · 可回放真实公开记录 · 不拨打真实电话</span></div>
+      <div className="demo-title"><span>模拟流程 · 可回放真实公开记录 · 不拨打真实电话</span></div>
       {error && <div className="notice error" role="alert">{error}</div>}
-      <GuidedDemo dashboard={dashboard} selected={selected} demoInput={lastInput} publicReplay={publicReplay} result={result} busy={busy} wearerId={wearerId} rawInput={input} inputRef={inputRef} onRawInputChange={setInput} onFillNext={() => void fillNextDemoHistory()} onImportRaw={() => void importData()} onSelect={chooseJourney} onPublicReplay={replayPublicData} onImportNext={() => void importNextDemoHistory()} onReset={() => void resetDemo()} onResume={() => void run(() => api.resume(wearerId))} onAction={act} onInterpretWearerText={api.interpretWearerText} onHelp={() => void run(() => api.help(wearerId))} />
+      <GuidedDemo dashboard={dashboard} selected={selected} completed={completed} demoInput={lastInput} publicReplay={publicReplay} result={result} busy={busy} wearerId={wearerId} rawInput={input} inputRef={inputRef} onRawInputChange={setInput} onFillNext={() => void fillNextDemoHistory()} onImportRaw={() => void importData()} onSelect={chooseJourney} onPublicReplay={replayPublicData} onImportNext={() => void importNextDemoHistory()} onReset={() => void resetDemo()} onResume={() => void run(() => api.resume(wearerId))} onAction={act} onInterpretWearerText={api.interpretWearerText} onHelp={() => void run(() => api.help(wearerId))} />
       <details className="advanced-details" id="details"><summary>判断依据、原始记录与演示设置</summary><div className="advanced-grid">
         <section className="advanced-panel"><TimerPanel />{dashboard.baseline && <><h2>当前基线详情</h2>{dashboard.baseline.baseline.observations?.map(item => <p className="observation" key={item.context}>{item.context === 'resting' ? '静息' : item.context === 'activity' ? '活动' : '夜间'} · 心率中位数 {item.heartRate?.median ?? '—'} 次/分 · 血氧中位数 {item.spo2?.median ?? '—'}%</p>)}</>}</section>
         {event && <section className="advanced-panel advanced-wide"><EmergencyCard event={event} card={dashboard.eventCard} contacts={dashboard.contactDeliveries} messages={dashboard.messages} /><EventTimeline eventId={event.eventId} stateVersion={event.stateVersion} />{wearerPrompt && <button onClick={() => speakSimulation(wearerPrompt)}>重播佩戴者警告</button>}{emergencyScript && <button onClick={() => speakSimulation(emergencyScript)}>重播模拟语音</button>}</section>}

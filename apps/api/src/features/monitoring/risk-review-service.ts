@@ -45,6 +45,7 @@ export class RiskReviewService {
   }
 
   cancel(wearerId: string): void { this.end(wearerId, 'cancelled', this.clock.now().toISOString()); }
+  close(wearerId: string): void { this.end(wearerId, 'closed', this.clock.now().toISOString()); }
 
   async assess(wearerId: string, risk: RiskAssessment, samples: VitalSample[], baselineVersion: number | null, baseline: PersonalBaseline): Promise<{ action: ReviewAction; snapshot: RiskReviewSnapshot | null }> {
     const now = this.clock.now().toISOString();

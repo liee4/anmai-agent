@@ -8,7 +8,7 @@ async function firstBaseline(page: import('@playwright/test').Page) {
 }
 
 test('guides repeated baseline imports and restarts after reset', async ({ page }) => {
-  await expect(page.getByRole('heading', { name: '一次异常体征，系统会怎样响应？' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '选择患者情景' })).toBeVisible();
   await expect(page.locator('.journey-options button')).toHaveCount(8);
   await expect(page.getByRole('button', { name: '导入首轮 14 天', exact: true })).toHaveCount(1);
   await expect(page.locator('.advanced-details')).not.toContainText('导入并检查基线');
@@ -43,7 +43,8 @@ test('replays attributed public measurements without baseline learning', async (
 });
 
 test('replays measured abnormal data through simulated relative contact', async ({ page }) => {
-  await page.getByRole('button', { name: '回放真实高心率' }).click();
+  await expect(page.getByRole('button', { name: '回放平稳记录' })).toHaveCount(0);
+  await page.getByRole('button', { name: '真实数据回放' }).click();
   await expect(page.locator('.public-replay-details')).toContainText('bidmc_21');
   await expect(page.locator('.guided-main h2')).toHaveText('等待主要亲属接管');
   await expect(page.locator('.guided-main')).toContainText('已跳过模型等待');
@@ -112,6 +113,40 @@ test('returns to scenario selection after ending a simulated event', async ({ pa
   await expect(page.locator('.journey-options button.active')).toHaveText('个人基线');
 });
 
+test('keeps an ordinary abnormal event summary visible after closing and resets the review step', async ({ page }) => {
+  await firstBaseline(page);
+  await page.getByRole('button', { name: '异常 · 有回应' }).click();
+  await expect(page.locator('.guided-main h2')).toHaveText('持续异常，模型建议短时观察');
+  await page.getByRole('button', { name: '观察结束后，再输入持续异常' }).click();
+  await page.getByRole('button', { name: '我不舒服，需要亲属' }).click();
+  await page.getByRole('button', { name: '亲属已接管' }).click();
+  await page.getByRole('button', { name: '结束模拟事件' }).click();
+  await expect(page.locator('.journey-options button.active')).toHaveText('个人基线');
+  await expect(page.locator('.guided-main h2')).toHaveText('输入一段模拟实时体征');
+  await expect(page.locator('.guided-main .evidence')).toContainText('等待下一段体征');
+  await expect(page.locator('.guided-main .evidence')).not.toContainText('心率持续异常');
+  await expect(page.locator('.completion-summary')).toContainText('持续异常');
+  await expect(page.locator('.completion-summary')).toContainText('亲属已接管');
+  await expect(page.locator('.completion-summary')).toBeInViewport();
+  await page.waitForTimeout(1200);
+  await expect(page.locator('.completion-summary')).toBeVisible();
+  await page.getByRole('button', { name: '正常静息' }).click();
+  await expect(page.locator('.completion-summary')).toHaveCount(0);
+});
+
+test('ignores an older asked review when no emergency event is active', async ({ page }) => {
+  await firstBaseline(page);
+  await page.route('**/api/dashboard/*', async route => {
+    const response = await route.fetch();
+    const dashboard = await response.json();
+    if (!dashboard.event) dashboard.riskReview = { status: 'asked', provider: 'fake', decision: 'observe', reason: '此前已询问', deadlineAt: null, fallbackReason: null };
+    await route.fulfill({ response, json: dashboard });
+  });
+  await page.reload();
+  await expect(page.locator('.guided-main h2')).toHaveText('输入一段模拟实时体征');
+  await expect(page.locator('.logic')).toContainText('当前无待处理模型复核');
+});
+
 test('distinguishes normal activity and untrusted device data', async ({ page }) => {
   await firstBaseline(page);
   await page.getByRole('button', { name: '正常静息' }).click();
@@ -163,6 +198,9 @@ test('routes severe risk to relatives and shows a simulated call on desktop and 
   await page.setViewportSize({ width: 390, height: 844 });
   await expect(page.locator('.guided-main h2')).toBeVisible();
   await page.screenshot({ path: 'test-results/anmai-guided-mobile.png', fullPage: true });
+  await page.getByRole('button', { name: '结束模拟事件' }).click();
+  await expect(page.locator('.completion-summary')).toContainText('已进入模拟自动呼救');
+  await expect(page.locator('.completion-summary')).toBeInViewport();
 });
 
 test('reports a lost request and allows retry', async ({ page }) => {

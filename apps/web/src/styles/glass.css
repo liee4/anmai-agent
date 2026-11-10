@@ -48,6 +48,7 @@ button:hover:not(:disabled) {
 .primary:hover:not(:disabled) { background: #115469; }
 
 .demo-header,
+.completion-summary,
 .journeys,
 .baseline-strip,
 .guided-main,
@@ -67,6 +68,7 @@ button:hover:not(:disabled) {
 }
 
 .journeys,
+.completion-summary,
 .baseline-strip,
 .guided-main,
 .guided-aside,
@@ -158,6 +160,7 @@ button:hover:not(:disabled) {
 
 @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
   .demo-header,
+  .completion-summary,
   .journeys,
   .baseline-strip,
   .guided-main,
@@ -169,6 +172,7 @@ button:hover:not(:disabled) {
 @media (max-width: 600px) {
   .demo-header { padding: 13px 15px; }
   .demo-header,
+  .completion-summary,
   .journeys,
   .baseline-strip,
   .guided-main,
@@ -182,6 +186,7 @@ button:hover:not(:disabled) {
 
 @media (forced-colors: active) {
   .demo-header,
+  .completion-summary,
   .journeys,
   .baseline-strip,
   .guided-main,

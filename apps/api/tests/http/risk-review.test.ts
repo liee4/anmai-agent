@@ -23,6 +23,27 @@ it('places model review between rule abnormality and the wearer question', async
   await app.close(); db.close();
 });
 
+it('closes the review with a completed event and reviews the next abnormal episode again', async () => {
+  const db = openDatabase(':memory:');
+  const clock = new FakeClock(new Date('2026-11-04T00:00:35Z'));
+  new BaselineRepository(db).publish({ wearerId: 'w', version: 1, cycleId: 'w:2026-10-01', publishedAt: '2026-10-15T00:00:00Z', baseline: { values: {}, observations: [] } });
+  let calls = 0;
+  const app = buildApp({ db, clock, riskReviewProvider: { review: async () => { calls++; return { decision: 'observe', reason: '短时观察' }; } }, riskReviewProviderName: 'test' });
+  const samples = Array.from({ length: 35 }, (_, index) => ({ timestamp: new Date(Date.UTC(2026, 10, 4, 0, 0, index)).toISOString(), heartRate: 110, spo2: 97, activity: 'resting' }));
+  try {
+    await app.inject({ method: 'POST', url: '/api/monitor/evaluate', payload: { wearerId: 'w', samples } });
+    clock.advance(30_000);
+    const alert = (await app.inject({ method: 'POST', url: '/api/monitor/evaluate', payload: { wearerId: 'w', samples } })).json().event;
+    const contact = (await app.inject({ method: 'POST', url: `/api/events/${alert.eventId}/actions`, payload: { kind: 'wearer_unwell', stateVersion: alert.stateVersion } })).json().event;
+    const takeover = (await app.inject({ method: 'POST', url: `/api/events/${alert.eventId}/actions`, payload: { kind: 'relative_takeover', stateVersion: contact.stateVersion } })).json().event;
+    const closed = (await app.inject({ method: 'POST', url: `/api/events/${alert.eventId}/actions`, payload: { kind: 'close', stateVersion: takeover.stateVersion } })).json().event;
+    expect(closed.state).toBe('closed');
+    expect((await app.inject({ method: 'GET', url: '/api/dashboard/w' })).json()).toMatchObject({ event: null, riskReview: { status: 'closed' } });
+    await app.inject({ method: 'POST', url: '/api/monitor/evaluate', payload: { wearerId: 'w', samples } });
+    expect(calls).toBe(2);
+  } finally { await app.close(); db.close(); }
+});
+
 it('lets the wearer ask for relatives during observation without waiting for the model deadline', async () => {
   const db = openDatabase(':memory:');
   const clock = new FakeClock(new Date('2026-11-04T00:00:35Z'));

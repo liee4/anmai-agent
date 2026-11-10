@@ -7,6 +7,7 @@ import { PublicDataReplayCard } from './PublicDataReplayCard.js';
 import { WearerTextReply } from './WearerTextReply.js';
 
 export type Journey = 'baseline' | 'rest' | 'activity' | 'responsive' | 'noanswer' | 'worsening' | 'device' | 'publicdata';
+export interface CompletedSimulation { risk: string; review: string; wearerFeedback: string; outcome: string }
 
 const journeys: { key: Journey; label: string; description: string }[] = [
   { key: 'baseline', label: '个人基线', description: '14 天历史数据形成个性化软阈值，固定安全阈值保持不变。' },
@@ -36,7 +37,7 @@ function stageOf(dashboard: Dashboard, selected: Journey): number {
   const state = dashboard.event?.state;
   if (state === 'wearer_alert') return 2;
   if (state && state !== 'safe_recheck' && state !== 'closed') return 3;
-  if (dashboard.riskReview && !['closed', 'cancelled'].includes(dashboard.riskReview.status)) return 2;
+  if (dashboard.riskReview && ['pending', 'observe'].includes(dashboard.riskReview.status)) return 2;
   if (selected === 'publicdata') return 1;
   if (!dashboard.baseline && selected === 'baseline') return 0;
   return 1;
@@ -79,9 +80,10 @@ function statusText(dashboard: Dashboard, selected: Journey, result: string): st
   return dashboard.baseline ? '个人基线已建立，选择患者情景或输入一段实时体征。' : '先导入 14 天模拟历史数据，建立个人基线。';
 }
 
-export function GuidedDemo({ dashboard, selected, demoInput, publicReplay, result, busy, wearerId, rawInput, inputRef, onRawInputChange, onFillNext, onImportRaw, onSelect, onPublicReplay, onImportNext, onReset, onResume, onAction, onInterpretWearerText, onHelp }: {
+export function GuidedDemo({ dashboard, selected, completed, demoInput, publicReplay, result, busy, wearerId, rawInput, inputRef, onRawInputChange, onFillNext, onImportRaw, onSelect, onPublicReplay, onImportNext, onReset, onResume, onAction, onInterpretWearerText, onHelp }: {
   dashboard: Dashboard;
   selected: Journey;
+  completed: CompletedSimulation | null;
   demoInput: DemoInput | null;
   publicReplay: PublicReplay | null;
   result: string;
@@ -108,7 +110,7 @@ export function GuidedDemo({ dashboard, selected, demoInput, publicReplay, resul
   const reviewSeconds = secondsLeft(review?.deadlineAt ?? null);
   const eventSeconds = secondsLeft(event?.deadlineAt ?? null);
   const preset = scenarioPreset(selected, demoInput, publicReplay);
-  const activeReview = Boolean(review && !['closed', 'cancelled'].includes(review.status));
+  const activeReview = Boolean(review && ['pending', 'observe'].includes(review.status));
   const resting = dashboard.baseline?.baseline.observations?.find(item => item.context === 'resting');
   const activity = dashboard.baseline?.baseline.observations?.find(item => item.context === 'activity');
   const normalHeartRate = Math.round(resting?.heartRate?.median ?? 78);
@@ -116,7 +118,7 @@ export function GuidedDemo({ dashboard, selected, demoInput, publicReplay, resul
   const normalSpo2 = Math.round(resting?.spo2?.median ?? 97);
   const activitySpo2 = Math.round(activity?.spo2?.median ?? 97);
   const blocked = Boolean(event);
-  const modelStep = risk?.level === 'worsening' ? '明显恶化：按安全规则跳过模型等待' : risk?.level === 'untrusted_data' && activeReview ? '此前异常已由模型复核；当前设备数据不可信' : risk?.level === 'normal' || risk?.level === 'untrusted_data' ? '规则未确认普通异常，无需模型复核' : `普通异常：${dashboard.riskReviewProvider} 复核并说明理由`;
+  const modelStep = !event && !activeReview && selected === 'baseline' ? '当前无待处理模型复核' : risk?.level === 'worsening' ? '明显恶化：按安全规则跳过模型等待' : risk?.level === 'untrusted_data' && activeReview ? '此前异常已由模型复核；当前设备数据不可信' : risk?.level === 'normal' || risk?.level === 'untrusted_data' ? '规则未确认普通异常，无需模型复核' : `普通异常：${dashboard.riskReviewProvider} 复核并说明理由`;
   const logic = [
     ['接收体征', selected === 'publicdata' ? '回放有来源的真实监护数值' : '模拟穿戴设备持续传入心率与血氧'],
     ['规则判断', '检查数据质量、持续时间与阈值'],
@@ -131,8 +133,12 @@ export function GuidedDemo({ dashboard, selected, demoInput, publicReplay, resul
   const latest = dashboard.eventCard?.latest;
 
   return <>
+    {completed && <section className="completion-summary" role="status" aria-label="本次模拟总结">
+      <div><small>模拟已结束</small><h2>本次模拟总结</h2><p>已返回情景选择；选择下一情景后开始新一轮演示。</p></div>
+      <dl><dt>规则结果</dt><dd>{completed.risk}</dd><dt>模型环节</dt><dd>{completed.review}</dd><dt>佩戴者反馈</dt><dd>{completed.wearerFeedback}</dd><dt>处理结果</dt><dd>{completed.outcome}</dd></dl>
+    </section>}
     <section className="journeys" aria-label="患者情景">
-      <div className="journeys-head"><h2>选择患者情景</h2><p>现场讲解可依次演示；评委也可直接进入任一情景</p></div>
+      <div className="journeys-head"><h2>选择患者情景</h2></div>
       <div className="journey-options">{journeys.map(journey => <button key={journey.key} className={selected === journey.key ? 'active' : ''} aria-pressed={selected === journey.key} disabled={busy || (blocked && journey.key !== 'baseline' && journey.key !== 'worsening')} onClick={() => onSelect(journey.key)}>{journey.label}</button>)}</div>
       <p className="journey-desc">{journeys.find(item => item.key === selected)?.description}{blocked && ' · 当前事件进行中，可结束事件或重置后切换其他情景。'}</p>
     </section>
@@ -164,7 +170,7 @@ export function GuidedDemo({ dashboard, selected, demoInput, publicReplay, resul
             <button disabled={busy} onClick={() => onSelect('worsening')}><strong>输入明显恶化体征</strong><span>心率 142 次/分 · 血氧 90%</span></button>
             <button disabled={busy || blocked} onClick={() => onSelect('device')}><strong>设备松动</strong><span>数据不可信，只提示检查设备</span></button>
           </div>
-          <div className="evidence"><h3>个人基线与判断依据</h3><dl><dt>基线</dt><dd>{dashboard.baseline ? `v${dashboard.baseline.version} · ${dashboard.baseline.cycleId.slice(-10)} 起的 14 天` : '尚未生成，使用通用演示规则'}</dd><dt>规则判断</dt><dd>{reasons || '等待实时体征'}</dd><dt>模型复核</dt><dd>{risk?.level === 'normal' || risk?.level === 'untrusted_data' ? '未调用' : dashboard.riskReview?.reason ?? '等待普通异常'}</dd></dl></div>
+            <div className="evidence"><h3>个人基线与判断依据</h3><dl><dt>基线</dt><dd>{dashboard.baseline ? `v${dashboard.baseline.version} · ${dashboard.baseline.cycleId.slice(-10)} 起的 14 天` : '尚未生成，使用通用演示规则'}</dd><dt>规则判断</dt><dd>{selected === 'baseline' ? '等待下一段体征' : reasons || '等待实时体征'}</dd><dt>模型复核</dt><dd>{selected === 'baseline' ? '当前无复核' : risk?.level === 'normal' || risk?.level === 'untrusted_data' ? '未调用' : dashboard.riskReview?.reason ?? '等待普通异常'}</dd></dl></div>
         </>}
         {stage === 2 && <>
           <p className="eyebrow">{event ? '正在询问佩戴者' : '规则检测与模型复核'}</p>
