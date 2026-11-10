@@ -5,11 +5,12 @@ import { fallbackMessages } from '../../../src/features/agent/message-provider.j
 import { openDatabase } from '../../../src/infra/database.js';
 import { FakeClock } from '../../../src/clock.js';
 import { EmergencyService } from '../../../src/features/emergency/emergency-service.js';
+import { knowledgeForRisk } from '../../../src/features/knowledge/evidence-library.js';
 
 const options = (content: string) => ({ apiKey: 'test-only', baseUrl: 'https://example.test', model: 'test-model', fetcher: vi.fn(async (_url: RequestInfo | URL, _init?: RequestInit) => new Response(JSON.stringify({ choices: [{ message: { content } }] }), { status: 200 })) });
 
 it('accepts a strict risk decision and rejects an extra field from DeepSeek', async () => {
-  const request = { wearerId: 'secret-wearer-id', risk: { level: 'abnormal', score: 99, reasons: [], assessedAt: '2026-11-04T00:00:00Z' }, latest: { timestamp: '2026-11-04T00:00:00Z', heartRate: 108, spo2: 97, activity: 'resting', deviceTrusted: true }, recent: [], baselineVersion: 1, baseline: {} } as Parameters<DeepSeekRiskReviewProvider['review']>[0];
+  const request = { wearerId: 'secret-wearer-id', risk: { level: 'abnormal', score: 99, reasons: ['heart_rate_persistent'], assessedAt: '2026-11-04T00:00:00Z' }, latest: { timestamp: '2026-11-04T00:00:00Z', heartRate: 108, spo2: 97, activity: 'resting', deviceTrusted: true }, recent: [], baselineVersion: 1, baseline: {}, knowledge: knowledgeForRisk({ level: 'abnormal', reasons: ['heart_rate_persistent'], assessedAt: '2026-11-04T00:00:00Z' }) } as Parameters<DeepSeekRiskReviewProvider['review']>[0];
   const valid = options('{"decision":"observe","reason":"短时复查"}');
   expect(await new DeepSeekRiskReviewProvider(valid).review(request)).toEqual({ decision: 'observe', reason: '短时复查' });
   expect(valid.fetcher.mock.calls).toHaveLength(1);
@@ -17,6 +18,7 @@ it('accepts a strict risk decision and rejects an extra field from DeepSeek', as
   expect(outbound).not.toContain('secret-wearer-id');
   const reviewContent = JSON.parse((JSON.parse(outbound) as { messages: { content: string }[] }).messages[1]!.content) as Record<string, unknown>;
   expect(reviewContent.risk).not.toHaveProperty('score');
+  expect(reviewContent.knowledge).toMatchObject([{ id: 'heart-symptoms', sourcePublisher: '国家卫生健康委员会' }]);
   const invalid = options('{"decision":"observe","reason":"短时复查","callRelative":true}');
   await expect(new DeepSeekRiskReviewProvider(invalid).review(request)).rejects.toThrow('schema mismatch');
 });

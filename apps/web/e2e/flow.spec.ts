@@ -47,6 +47,7 @@ test('shows model observation, wearer response and relative contact', async ({ p
   await page.getByRole('button', { name: '异常 · 有回应' }).click();
   await expect(page.locator('.guided-main h2')).toHaveText('持续异常，模型建议短时观察');
   await expect(page.locator('.review-status')).toContainText('模型建议短时观察');
+  await expect(page.locator('.knowledge-sources')).toContainText('国家卫生健康委员会');
   await page.reload();
   await expect(page.locator('.guided-main h2')).toHaveText('持续异常，模型建议短时观察');
   await expect(page.locator('.journey-options button.active')).toHaveText('异常 · 有回应');

@@ -28,6 +28,7 @@ import { FakeMessageProvider } from './features/agent/fake-message-provider.js';
 import type { MessageProvider } from './features/agent/message-provider.js';
 import type { DemoSessions } from './features/demo/demo-session.js';
 import { replayBidmcWindow } from './features/public-data/bidmc-replay.js';
+import { knowledgeCatalog, knowledgeForRisk } from './features/knowledge/evidence-library.js';
 
 export interface AppDependencies { db: DatabaseContext; clock: Clock; baselineProvider?: BaselineModelProvider; baselineProviderName?: string | ((wearerId: string) => string); riskReviewProvider?: RiskReviewProvider; riskReviewProviderName?: string | ((wearerId: string) => string); riskObservationSeconds?: number; messageProvider?: MessageProvider; messageProviderName?: string | ((wearerId: string) => string); demoSessions?: DemoSessions }
 
@@ -70,7 +71,8 @@ export function buildApp({ db, clock, baselineProvider = new FakeBaselineProvide
   function snapshot(wearerId: string) {
     const event = emergency.getActiveForWearer(wearerId);
     const activeBaseline = baseline.getActive(wearerId);
-    return { wearerId, risk: latestRisk.get(wearerId) ?? riskReview.getLastObservation(wearerId)?.risk ?? null, event, eventCard: event ? cards.get(event.eventId) : null, contactDeliveries: event ? emergency.getContactDeliveries(event.eventId) : [], messages: event ? messages.get(event.eventId, event.state) : null, confirmedMonitor: emergency.getMonitorState(wearerId), baseline: activeBaseline, baselineHistory: baseline.getRecentVersions(wearerId), aggregationWarning: Boolean(activeBaseline && activeBaseline.baseline.aggregationVersion !== 2), baselineState: baseline.getState(wearerId), provider: nameOf(baselineProviderName, wearerId), riskReview: riskReview.get(wearerId), riskReviewProvider: nameOf(riskReviewProviderName, wearerId), messageProvider: nameOf(messageProviderName, wearerId) };
+    const risk = latestRisk.get(wearerId) ?? riskReview.getLastObservation(wearerId)?.risk ?? null;
+    return { wearerId, risk, knowledge: knowledgeForRisk(risk), event, eventCard: event ? cards.get(event.eventId) : null, contactDeliveries: event ? emergency.getContactDeliveries(event.eventId) : [], messages: event ? messages.get(event.eventId, event.state) : null, confirmedMonitor: emergency.getMonitorState(wearerId), baseline: activeBaseline, baselineHistory: baseline.getRecentVersions(wearerId), aggregationWarning: Boolean(activeBaseline && activeBaseline.baseline.aggregationVersion !== 2), baselineState: baseline.getState(wearerId), provider: nameOf(baselineProviderName, wearerId), riskReview: riskReview.get(wearerId), riskReviewProvider: nameOf(riskReviewProviderName, wearerId), messageProvider: nameOf(messageProviderName, wearerId) };
   }
 
   function sse(event: BusEvent): string { return `id: ${event.id}\nevent: update\ndata: ${JSON.stringify(event)}\n\n`; }
@@ -95,6 +97,7 @@ export function buildApp({ db, clock, baselineProvider = new FakeBaselineProvide
   }
 
   app.get('/api/health', async () => ({ status: 'ok', demoOnly: true }));
+  app.get('/api/knowledge', async () => ({ version: '2026-11-10.1', reviewStatus: 'source_verified_pending_clinical_review', entries: knowledgeCatalog }));
   app.get('/api/session', async request => ({ wearerId: demoSessions?.fromCookie(request.headers.cookie)?.wearer_id ?? 'demo-wearer', publicDemo: Boolean(demoSessions?.accessToken), ...(demoSessions?.accessToken ? demoSessions.status(demoSessions.fromCookie(request.headers.cookie)!.wearer_id) : { mode: 'fake', deepseekConfigured: false, remaining: 0 }) }));
   app.get('/api/settings/provider-mode', async request => demoSessions?.status(demoSessions.fromCookie(request.headers.cookie)!.wearer_id) ?? { mode: 'fake', deepseekConfigured: false, remaining: 0 });
   app.put('/api/settings/provider-mode', async (request, reply) => {

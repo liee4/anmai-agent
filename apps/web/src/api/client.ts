@@ -9,6 +9,7 @@ export interface BaselineView {
 export interface Dashboard {
   wearerId: string;
   risk: RiskAssessment | null;
+  knowledge: { id: string; version: string; title: string; summary: string; sourcePublisher: string; sourceUrl: string; reviewStatus: string }[];
   event: EmergencyEvent | null;
   confirmedMonitor: { confirmedAt: string; recheckAt: string; recheckCount: number } | null;
   baseline: BaselineView | null;

@@ -5,6 +5,7 @@ import type { Clock } from '../../clock.js';
 import type { DatabaseContext } from '../../infra/database.js';
 import type { PersonalBaseline } from './risk-detector.js';
 import type { RiskReviewProvider, RiskReviewRequest, ReviewVital } from './risk-review-provider.js';
+import { knowledgeForRisk } from '../knowledge/evidence-library.js';
 
 interface ReviewRow {
   generation: number;
@@ -76,7 +77,7 @@ export class RiskReviewService {
       ...(sample.deviceTrusted === undefined ? {} : { deviceTrusted: sample.deviceTrusted }),
     });
     const recent = samples.filter(sample => Date.parse(risk.assessedAt) - Date.parse(sample.timestamp) <= 60_000).slice(-60).map(compact);
-    const request: RiskReviewRequest = { wearerId, risk, latest: compact(samples.at(-1)!), recent, baselineVersion, baseline };
+    const request: RiskReviewRequest = { wearerId, risk, latest: compact(samples.at(-1)!), recent, baselineVersion, baseline, knowledge: knowledgeForRisk(risk) };
     const providerName = typeof this.providerName === 'function' ? this.providerName(wearerId) : this.providerName;
     const inputHash = createHash('sha256').update(JSON.stringify(request)).digest('hex');
     this.db.raw.prepare('INSERT INTO risk_review_state(wearer_id,generation,status,provider,decision,reason,deadline_at,fallback_reason,last_risk_json,last_sample_json,updated_at) VALUES (?,?,\'pending\',?,NULL,NULL,NULL,NULL,?,?,?) ON CONFLICT(wearer_id) DO UPDATE SET generation=excluded.generation,status=excluded.status,provider=excluded.provider,decision=NULL,reason=NULL,deadline_at=NULL,fallback_reason=NULL,last_risk_json=excluded.last_risk_json,last_sample_json=excluded.last_sample_json,updated_at=excluded.updated_at').run(wearerId, generation, providerName, JSON.stringify(risk), JSON.stringify(samples.at(-1)), now);

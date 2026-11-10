@@ -214,3 +214,8 @@ button:hover:not(:disabled) {
 .public-replay-details a { color: #17647a; }
 .public-replay-details span { color: #657679; }
 @media (max-width: 900px) { .public-replay { grid-template-columns: 1fr; } }
+
+.knowledge-sources { display: grid; gap: 7px; margin-top: 15px; padding: 13px 14px; border: 1px solid rgba(23, 100, 122, .14); border-radius: 9px; background: rgba(255, 255, 255, .46); font-size: 12px; }
+.knowledge-sources strong { font-size: 13px; color: #234f5a; }
+.knowledge-sources small { color: #637679; line-height: 1.45; }
+.knowledge-sources a { color: #17647a; text-decoration: underline; line-height: 1.45; }

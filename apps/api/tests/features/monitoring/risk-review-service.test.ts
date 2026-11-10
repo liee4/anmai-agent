@@ -18,6 +18,7 @@ it('sends evidence and recent vitals to review without location', async () => {
   const location = { name: 'private-home', latitude: 1, longitude: 2 };
   await service.assess('secret-wearer-id', { ...abnormal, evidence }, [{ ...samples[0]!, location }], 1, { values: { 'resting.heartRateWarningUpper': 105 } });
   expect(sent).toMatchObject({ risk: { level: 'abnormal', evidence }, latest: { heartRate: 110 }, baselineVersion: 1 });
+  expect(sent!.knowledge.map(item => item.id)).toEqual(['heart-symptoms']);
   const payload = JSON.stringify(sent);
   expect(payload).not.toContain('private-home');
   db.close();
