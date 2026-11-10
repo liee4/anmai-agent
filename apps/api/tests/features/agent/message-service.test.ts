@@ -13,8 +13,20 @@ it('keeps a local warning ready and accepts a validated model message later', as
   const messages = new MessageService(db, clock, { compose: () => new Promise(resolve => { release = resolve; }) }, 'test');
   const pending = messages.ensure(event);
   expect(messages.get(event.eventId, event.state)?.wearerPrompt).toContain('体征');
+  expect(messages.get(event.eventId, event.state)?.status).toBe('pending');
   release({ wearerPrompt: '检测到心率持续异常，请确认您的状态。' });
   await pending;
   expect(messages.get(event.eventId, event.state)?.wearerPrompt).toContain('心率');
+  expect(messages.get(event.eventId, event.state)?.status).toBe('generated');
+  db.close();
+});
+
+it('marks a failed model message as a final local fallback', async () => {
+  const db = openDatabase(':memory:');
+  const clock = new FakeClock(new Date('2026-11-04T00:00:00Z'));
+  const event = new EmergencyService(db, clock).start('w', { level: 'abnormal', score: 2, reasons: ['heart_rate_persistent'], assessedAt: '2026-11-04T00:00:00Z' });
+  const messages = new MessageService(db, clock, { compose: async () => { throw new Error('unavailable'); } }, 'test');
+  await messages.ensure(event);
+  expect(messages.get(event.eventId, event.state)?.status).toBe('fallback');
   db.close();
 });

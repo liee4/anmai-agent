@@ -203,6 +203,63 @@ test('routes severe risk to relatives and shows a simulated call on desktop and 
   await expect(page.locator('.completion-summary')).toBeInViewport();
 });
 
+test('keeps the previous scenario hidden while a new severe event loads', async ({ page }) => {
+  await firstBaseline(page);
+  await page.getByRole('button', { name: '明显恶化', exact: true }).click();
+  await page.getByRole('button', { name: '亲属已接管' }).click();
+  await page.getByRole('button', { name: '结束模拟事件' }).click();
+  await expect(page.locator('.completion-summary')).toBeVisible();
+  let release!: () => void;
+  const held = new Promise<void>(resolve => { release = resolve; });
+  await page.route('**/api/dashboard/*', async route => { await held; await route.continue().catch(() => undefined); });
+  try {
+    const scenarioResponse = page.waitForResponse(response => response.url().endsWith('/api/simulator/worsening') && response.ok());
+    await page.getByRole('button', { name: '输入明显恶化体征' }).click();
+    await scenarioResponse;
+    await page.evaluate(() => new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
+    await expect(page.locator('.completion-summary')).toHaveCount(0);
+    await expect(page.locator('.journey-options button.active')).toHaveText('个人基线');
+    await expect(page.locator('.risk-result')).toHaveCount(0);
+  } finally {
+    release();
+    await page.unroute('**/api/dashboard/*');
+  }
+  await expect(page.locator('.guided-main h2')).toHaveText('等待主要亲属接管');
+});
+
+test('speaks the finished simulated call once at a faster rate', async ({ page }) => {
+  await page.evaluate(() => {
+    const calls: { text: string; rate: number }[] = [];
+    Object.assign(window, { __anmaiSpeechCalls: calls });
+    Object.defineProperty(window, 'speechSynthesis', { configurable: true, value: { cancel() {}, speak(utterance: SpeechSynthesisUtterance) { calls.push({ text: utterance.text, rate: utterance.rate }); } } });
+    Object.defineProperty(window, 'SpeechSynthesisUtterance', { configurable: true, value: class { lang = ''; rate = 1; constructor(public text: string) {} } });
+  });
+  let callMessageReads = 0;
+  let releaseGenerated!: () => void;
+  const generatedGate = new Promise<void>(resolve => { releaseGenerated = resolve; });
+  await page.route('**/api/dashboard/*', async route => {
+    const response = await route.fetch();
+    const body = await response.json();
+    if (body.event?.state === 'simulated_call') {
+      callMessageReads += 1;
+      if (callMessageReads > 1) await generatedGate;
+      body.messages = { emergencyScript: callMessageReads === 1 ? '这里是准备稿。' : '这里是最终模拟呼救播报。', provider: 'fake', status: callMessageReads === 1 ? 'pending' : 'generated' };
+    }
+    await route.fulfill({ response, json: body });
+  });
+  await page.getByRole('button', { name: '明显恶化', exact: true }).click();
+  await page.getByRole('button', { name: '无法接管，联系下一位' }).click();
+  await page.getByRole('button', { name: '无法接管，联系下一位' }).click();
+  await expect(page.locator('.guided-main h2')).toHaveText('模拟自动呼救');
+  await expect.poll(() => callMessageReads).toBeGreaterThanOrEqual(1);
+  await page.evaluate(() => new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
+  releaseGenerated();
+  await expect.poll(() => callMessageReads).toBeGreaterThanOrEqual(2);
+  await expect(page.getByText('这里是最终模拟呼救播报。', { exact: false })).toBeAttached();
+  const spoken = await page.evaluate(() => (window as typeof window & { __anmaiSpeechCalls: { text: string; rate: number }[] }).__anmaiSpeechCalls.filter(call => call.text.startsWith('这里是')));
+  expect(spoken).toEqual([{ text: '这里是最终模拟呼救播报。', rate: 1.15 }]);
+});
+
 test('reports a lost request and allows retry', async ({ page }) => {
   await page.route('**/api/simulator/abnormal', route => route.abort('failed'));
   await page.getByRole('button', { name: '异常 · 有回应' }).click();

@@ -16,7 +16,7 @@ function speakSimulation(script: string): void {
   window.speechSynthesis.cancel();
   const utterance = new SpeechSynthesisUtterance(script);
   utterance.lang = 'zh-CN';
-  utterance.rate = 0.9;
+  utterance.rate = 1.15;
   window.speechSynthesis.speak(utterance);
 }
 
@@ -123,6 +123,8 @@ export function App() {
     setResult('');
     void run(async () => {
       const response = await api.scenario(wearerId, scenario);
+      const nextDashboard = await api.dashboard(wearerId);
+      setDashboard(nextDashboard);
       setSelected(journey);
       setLastInput(response.demoInput);
       setPublicReplay(null);
@@ -163,7 +165,7 @@ export function App() {
   }
 
   const event = dashboard?.event;
-  const emergencyScript = event?.state === 'simulated_call' ? dashboard?.messages?.emergencyScript ?? `这里是安脉健康监测系统。佩戴者出现持续异常体征且无人接管。位置：${event.location?.name ?? '尚无位置数据'}。此通话仅为模拟。` : null;
+  const emergencyScript = event?.state === 'simulated_call' && dashboard?.messages?.status !== 'pending' ? dashboard?.messages?.emergencyScript ?? null : null;
   const wearerPrompt = event?.state === 'wearer_alert' || (event?.state === 'primary_contact' && event.risk.level === 'worsening') ? dashboard?.messages?.wearerPrompt ?? '检测到体征异常，请确认您现在是否不舒服。' : null;
   useEffect(() => {
     if (!wearerPrompt || !event || !('speechSynthesis' in window)) return;

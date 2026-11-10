@@ -15,4 +15,5 @@ export interface EventMessages {
   relativeSummary?: string;
   emergencyScript?: string;
   provider: string;
+  status: 'pending' | 'generated' | 'fallback';
 }
