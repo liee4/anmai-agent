@@ -219,3 +219,14 @@ button:hover:not(:disabled) {
 .knowledge-sources strong { font-size: 13px; color: #234f5a; }
 .knowledge-sources small { color: #637679; line-height: 1.45; }
 .knowledge-sources a { color: #17647a; text-decoration: underline; line-height: 1.45; }
+
+.wearer-reply { margin: 15px 0 19px; padding: 16px; border: 1px solid rgba(23, 100, 122, .15); border-radius: 10px; background: rgba(255, 255, 255, .45); }
+.wearer-reply label { display: block; font-size: 14px; font-weight: 600; margin-bottom: 9px; }
+.wearer-reply-input { display: flex; gap: 8px; }
+.wearer-reply-input input { min-width: 0; flex: 1; border: 1px solid #b6c8cc; border-radius: 6px; padding: 8px 11px; font: inherit; background: rgba(255, 255, 255, .78); }
+.wearer-reply-input input:focus-visible { outline: 3px solid #26869c; outline-offset: 2px; }
+.wearer-reply-result { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; margin-top: 12px; padding: 10px 12px; border-radius: 6px; background: rgba(226, 240, 240, .75); font-size: 13px; }
+.wearer-reply-result span { flex: 1; min-width: 170px; }
+.wearer-reply small { display: block; margin-top: 9px; color: #53686d; line-height: 1.5; }
+.wearer-reply p[role="alert"] { color: #a01f28; font-size: 13px; }
+@media (max-width: 600px) { .wearer-reply-input { flex-direction: column; } }

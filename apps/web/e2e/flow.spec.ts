@@ -70,6 +70,19 @@ test('shows model observation, wearer response and relative contact', async ({ p
   await expect(page.locator('.baseline-strip-copy>strong')).toHaveText('当前个人基线 v1');
 });
 
+test('shows a text interpretation before the wearer confirms an emergency action', async ({ page }) => {
+  await page.getByRole('button', { name: '异常 · 有回应' }).click();
+  await expect(page.locator('.guided-main h2')).toHaveText('异常仍在持续，请佩戴者确认状态');
+  await page.getByLabel('也可以用文字描述目前的感受').fill('我没事，但胸口不舒服');
+  await page.getByRole('button', { name: '理解我的回复' }).click();
+  await expect(page.locator('.wearer-reply-result')).toContainText('请确认是否立即联系亲属');
+  await expect(page.locator('.guided-main h2')).toHaveText('异常仍在持续，请佩戴者确认状态');
+  await page.getByRole('button', { name: '确认联系亲属' }).click();
+  await expect(page.locator('.guided-main h2')).toHaveText('等待主要亲属接管');
+  await page.getByRole('button', { name: '亲属已接管' }).click();
+  await page.getByRole('button', { name: '结束模拟事件' }).click();
+});
+
 test('distinguishes normal activity and untrusted device data', async ({ page }) => {
   await firstBaseline(page);
   await page.getByRole('button', { name: '正常静息' }).click();

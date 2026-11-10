@@ -29,6 +29,7 @@ import type { MessageProvider } from './features/agent/message-provider.js';
 import type { DemoSessions } from './features/demo/demo-session.js';
 import { replayBidmcWindow } from './features/public-data/bidmc-replay.js';
 import { knowledgeCatalog, knowledgeForRisk } from './features/knowledge/evidence-library.js';
+import { interpretWearerText } from './features/emergency/wearer-text.js';
 
 export interface AppDependencies { db: DatabaseContext; clock: Clock; baselineProvider?: BaselineModelProvider; baselineProviderName?: string | ((wearerId: string) => string); riskReviewProvider?: RiskReviewProvider; riskReviewProviderName?: string | ((wearerId: string) => string); riskObservationSeconds?: number; messageProvider?: MessageProvider; messageProviderName?: string | ((wearerId: string) => string); demoSessions?: DemoSessions }
 
@@ -233,6 +234,17 @@ export function buildApp({ db, clock, baselineProvider = new FakeBaselineProvide
   app.get('/api/events/:eventId/timeline', async (request) => emergency.getTimeline((request.params as { eventId: string }).eventId));
   app.get('/api/events/:eventId/card', async (request, reply) => cards.get((request.params as { eventId: string }).eventId) ?? reply.code(404).send({ code: 'EVENT_NOT_FOUND' }));
   app.get('/api/events/:eventId/contacts', async (request) => emergency.getContactDeliveries((request.params as { eventId: string }).eventId));
+  app.post('/api/events/:eventId/interpret-response', async (request, reply) => {
+    const { eventId } = request.params as { eventId: string };
+    const event = emergency.get(eventId);
+    if (!event) return reply.code(404).send({ code: 'EVENT_NOT_FOUND', message: 'Event not found' });
+    if (event.state !== 'wearer_alert') return reply.code(409).send({ code: 'RESPONSE_NOT_EXPECTED', message: '佩戴者回应阶段已结束' });
+    try {
+      return interpretWearerText((request.body as { text?: string } | null)?.text as string);
+    } catch (error) {
+      return reply.code(400).send({ code: 'INVALID_WEARER_TEXT', message: error instanceof Error ? error.message : 'Invalid text' });
+    }
+  });
   app.post('/api/events/:eventId/contacts/:contactId/actions', async (request, reply) => {
     const { eventId, contactId } = request.params as { eventId: string; contactId: string };
     const body = request.body as { stateVersion?: number; kind?: string } | null;

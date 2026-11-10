@@ -26,6 +26,7 @@ export interface Dashboard {
 }
 export interface DemoSession { wearerId: string; publicDemo: boolean; mode: 'fake' | 'deepseek'; deepseekConfigured: boolean; remaining: number }
 export interface DemoInput { heartRate: number; spo2: number; activity: string }
+export interface WearerTextInterpretation { intent: 'unwell' | 'safe' | 'uncertain'; suggestedAction: 'wearer_unwell' | 'wearer_safe' | null; summary: string }
 export interface PublicReplay {
   source: { dataset: string; version: string; recordId: string; originalSamplingHz: number; setting: string; license: string; url: string; sha256: string };
   rows: { second: number; heartRate?: number; pulseRate?: number; respiratoryRate?: number; spo2?: number }[];
@@ -50,6 +51,7 @@ export const api = {
   scenario: (wearerId: string, scenario: string) => json<{ risk: RiskAssessment; event: EmergencyEvent | null; demoInput: DemoInput }>(`/api/simulator/${scenario}`, { method: 'POST', body: JSON.stringify({ wearerId }) }),
   publicReplay: (wearerId: string, startSecond: number) => json<PublicReplay & { risk: RiskAssessment; event: EmergencyEvent | null }>('/api/public-data/bidmc/01/replay', { method: 'POST', body: JSON.stringify({ wearerId, startSecond }) }),
   action: (event: EmergencyEvent, kind: string) => json<{ ok: boolean; event: EmergencyEvent }>(`/api/events/${event.eventId}/actions`, { method: 'POST', body: JSON.stringify({ stateVersion: event.stateVersion, kind }) }),
+  interpretWearerText: (eventId: string, text: string) => json<WearerTextInterpretation>(`/api/events/${eventId}/interpret-response`, { method: 'POST', body: JSON.stringify({ text }) }),
   help: (wearerId: string) => json<{ event: EmergencyEvent }>('/api/monitor/help', { method: 'POST', body: JSON.stringify({ wearerId }) }),
   resume: (wearerId: string) => json<{ resumed: boolean }>(`/api/baselines/${encodeURIComponent(wearerId)}/resume`, { method: 'POST' }),
   deadlines: () => json<{ executed: number }>('/api/deadlines/run', { method: 'POST' }),

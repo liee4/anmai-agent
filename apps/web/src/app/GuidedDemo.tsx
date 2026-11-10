@@ -1,9 +1,10 @@
 import type { RefObject } from 'react';
-import type { Dashboard, DemoInput, PublicReplay } from '../api/client.js';
+import type { Dashboard, DemoInput, PublicReplay, WearerTextInterpretation } from '../api/client.js';
 import { BaselineStrip } from './BaselineStrip.js';
 import { RiskReviewStatus } from './RiskReviewStatus.js';
 import { RiskEvidenceSummary } from './RiskEvidenceSummary.js';
 import { PublicDataReplayCard } from './PublicDataReplayCard.js';
+import { WearerTextReply } from './WearerTextReply.js';
 
 export type Journey = 'baseline' | 'rest' | 'activity' | 'responsive' | 'noanswer' | 'worsening' | 'device' | 'publicdata';
 
@@ -78,7 +79,7 @@ function statusText(dashboard: Dashboard, selected: Journey, result: string): st
   return dashboard.baseline ? '个人基线已建立，选择患者情景或输入一段实时体征。' : '先导入 14 天模拟历史数据，建立个人基线。';
 }
 
-export function GuidedDemo({ dashboard, selected, demoInput, publicReplay, result, busy, wearerId, rawInput, inputRef, onRawInputChange, onFillNext, onImportRaw, onSelect, onPublicReplay, onImportNext, onReset, onResume, onAction, onHelp }: {
+export function GuidedDemo({ dashboard, selected, demoInput, publicReplay, result, busy, wearerId, rawInput, inputRef, onRawInputChange, onFillNext, onImportRaw, onSelect, onPublicReplay, onImportNext, onReset, onResume, onAction, onInterpretWearerText, onHelp }: {
   dashboard: Dashboard;
   selected: Journey;
   demoInput: DemoInput | null;
@@ -97,6 +98,7 @@ export function GuidedDemo({ dashboard, selected, demoInput, publicReplay, resul
   onReset: () => void;
   onResume: () => void;
   onAction: (kind: string) => void;
+  onInterpretWearerText: (eventId: string, text: string) => Promise<WearerTextInterpretation>;
   onHelp: () => void;
 }) {
   const event = dashboard.event;
@@ -171,6 +173,7 @@ export function GuidedDemo({ dashboard, selected, demoInput, publicReplay, resul
           {risk && <RiskEvidenceSummary risk={risk} />}
           {event ? <>
             <div className="guided-actions"><button className="primary" disabled={busy} onClick={() => onAction('wearer_unwell')}>我不舒服，需要亲属</button><button disabled={busy} onClick={() => onAction('wearer_safe')}>我没事，继续后台检测</button></div>
+            <WearerTextReply key={`${event.eventId}:${event.stateVersion}`} busy={busy} onInterpret={text => onInterpretWearerText(event.eventId, text)} onConfirm={onAction} />
             {selected === 'noanswer' && <p className="guided-note">此情景请保持无回应。提醒倒计时结束后，系统会自动联系主要亲属。</p>}
             {eventSeconds !== null && <p className="countdown">佩戴者回应剩余 {eventSeconds} 秒</p>}
           </> : <>
