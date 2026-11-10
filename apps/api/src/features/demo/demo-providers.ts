@@ -7,16 +7,21 @@ import { DeepSeekRiskReviewProvider } from '../monitoring/deepseek-risk-review-p
 import type { MessageProvider } from '../agent/message-provider.js';
 import { FakeMessageProvider } from '../agent/fake-message-provider.js';
 import { DeepSeekMessageProvider } from '../agent/deepseek-message-provider.js';
+import type { WearerTextProvider } from '../emergency/wearer-text-provider.js';
+import { FakeWearerTextProvider } from '../emergency/fake-wearer-text-provider.js';
+import { DeepSeekWearerTextProvider } from '../emergency/deepseek-wearer-text-provider.js';
 import type { DemoSessions } from './demo-session.js';
 
 export function demoProviders(sessions: DemoSessions, options: { apiKey: string | undefined; baseUrl?: string | undefined; model?: string | undefined; fetcher?: typeof fetch | undefined }) {
   const fakeBaseline = new FakeBaselineProvider();
   const fakeReview = new FakeRiskReviewProvider();
   const fakeMessage = new FakeMessageProvider();
+  const fakeWearerText = new FakeWearerTextProvider();
   const configuration = { apiKey: options.apiKey ?? '', baseUrl: options.baseUrl ?? 'https://api.deepseek.com', model: options.model ?? 'deepseek-flash', ...(options.fetcher ? { fetcher: options.fetcher } : {}) };
   const realBaseline = options.apiKey ? new DeepSeekBaselineProvider(configuration) : null;
   const realReview = options.apiKey ? new DeepSeekRiskReviewProvider(configuration) : null;
   const realMessage = options.apiKey ? new DeepSeekMessageProvider(configuration) : null;
+  const realWearerText = options.apiKey ? new DeepSeekWearerTextProvider(configuration) : null;
   function choose<T>(wearerId: string, fake: T, real: T | null): T {
     if (sessions.mode(wearerId) === 'fake') return fake;
     if (!real) throw new Error('DeepSeek is not configured');
@@ -27,5 +32,6 @@ export function demoProviders(sessions: DemoSessions, options: { apiKey: string 
   const baseline: BaselineModelProvider = { generateCandidate: (request, correction) => invoke(request.wearerId, () => choose<BaselineModelProvider>(request.wearerId, fakeBaseline, realBaseline).generateCandidate(request, correction)) };
   const review: RiskReviewProvider = { review: request => invoke(request.wearerId, () => choose<RiskReviewProvider>(request.wearerId, fakeReview, realReview).review(request)) };
   const message: MessageProvider = { compose: request => invoke(request.event.wearerId, () => choose<MessageProvider>(request.event.wearerId, fakeMessage, realMessage).compose(request)) };
-  return { baseline, review, message, nameFor: (wearerId: string) => sessions.mode(wearerId) };
+  const wearerText: WearerTextProvider = { interpret: request => invoke(request.wearerId, () => choose<WearerTextProvider>(request.wearerId, fakeWearerText, realWearerText).interpret(request)) };
+  return { baseline, review, message, wearerText, nameFor: (wearerId: string) => sessions.mode(wearerId) };
 }

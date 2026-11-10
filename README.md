@@ -9,7 +9,7 @@
 - 前端：React、TypeScript、Vite。
 - 后端：Fastify、TypeScript、Node.js 24。
 - 数据库：本地 SQLite（`node:sqlite`），迁移脚本保存在 `apps/api/src/infra/migrations`。
-- 模型接口：可替换的基线、风险复核、事件文案三个 Provider；均默认使用本地 Fake Provider，分别可配置为 DeepSeek。
+- 模型接口：可替换的基线、风险复核、事件文案和佩戴者文字理解 Provider；公开演示的模型开关同时切换四项功能。
 
 ## 本地启动
 
@@ -40,7 +40,7 @@ pnpm dev
 
 项目现在可用根目录 `Dockerfile` 部署为单个服务：同一 HTTPS 域名同时提供页面和 API。推荐在自己的 Railway 账户中连接私有仓库，挂载 `/data` 持久化卷，并设置 `PUBLIC_DEMO=1`、`DATABASE_PATH=/data/anmai.sqlite`、`DEMO_ACCESS_TOKEN` 与 `DEEPSEEK_API_KEY`。Key 只在 Railway 的服务 Variables 中填写，页面仅显示“已配置”和剩余额度。[完整操作与分享链接格式](docs/demo-runbook.md)。
 
-公开模式下，每位评委的模拟数据和模型模式按浏览器会话隔离；默认 Fake，页面可一次切换三个模型功能到 DeepSeek。DeepSeek 调用默认每会话最多 20 次、全站最多 100 次，可用环境变量调整。请在比赛前用自己的账号检查 Railway 与 DeepSeek 的实际计费和额度。
+公开模式下，每位评委的模拟数据和模型模式按浏览器会话隔离；默认 Fake，页面可一次切换四个模型功能到 DeepSeek。佩戴者自由文字在 DeepSeek 模式下由模型理解，结果仅作为待确认建议；本地不适规则可覆盖模型的错误安全判断，模型失败时会标明本地回退。DeepSeek 调用默认每会话最多 20 次、全站最多 100 次，可用环境变量调整。请在比赛前用自己的账号检查 Railway 与 DeepSeek 的实际计费和额度。
 
 ## 演示流程
 

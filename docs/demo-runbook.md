@@ -15,7 +15,7 @@ Railway 新账户可先使用试用额度；试用期或额度结束后，持续
 
 ## 准备
 
-在 `anmai` 目录运行 `pnpm install`、`pnpm verify`、`pnpm dev`。打开 `http://127.0.0.1:5173`。默认使用三个离线 Fake Provider，可稳定演示基线、风险复核与事件文案。需要真实 DeepSeek 调用时，先在 API 进程环境配置需要启用的 Provider 和 `DEEPSEEK_API_KEY`；不要把密钥放进演示页面或仓库。
+在 `anmai` 目录运行 `pnpm install`、`pnpm verify`、`pnpm dev`。打开 `http://127.0.0.1:5173`。默认使用离线 Fake Provider，可稳定演示基线、风险复核、事件文案与文字回复。需要真实 DeepSeek 调用时，先在 API 进程环境配置需要启用的 Provider 和 `DEEPSEEK_API_KEY`；不要把密钥放进演示页面或仓库。
 
 现场展示真实 DeepSeek 调用时，在**新的 PowerShell 窗口**进入 `anmai`，执行：
 

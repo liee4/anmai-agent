@@ -88,9 +88,10 @@ test('shows model observation, wearer response and relative contact', async ({ p
 test('shows a text interpretation before the wearer confirms an emergency action', async ({ page }) => {
   await page.getByRole('button', { name: '异常 · 有回应' }).click();
   await expect(page.locator('.guided-main h2')).toHaveText('异常仍在持续，请佩戴者确认状态');
-  await page.getByLabel('也可以用文字描述目前的感受').fill('我没事，但胸口不舒服');
+  await page.getByLabel('也可以用文字描述目前的感受').fill('我没事，但心脏有点疼');
   await page.getByRole('button', { name: '理解我的回复' }).click();
   await expect(page.locator('.wearer-reply-result')).toContainText('请确认是否立即联系亲属');
+  await expect(page.locator('.wearer-reply-result')).toContainText('本地规则理解');
   await expect(page.locator('.guided-main h2')).toHaveText('异常仍在持续，请佩戴者确认状态');
   await page.getByRole('button', { name: '确认联系亲属' }).click();
   await expect(page.locator('.guided-main h2')).toHaveText('等待主要亲属接管');

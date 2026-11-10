@@ -16,7 +16,7 @@ const providers = sessions ? demoProviders(sessions, { apiKey: process.env.DEEPS
 const configuredProvider = providers ? { provider: providers.baseline, name: providers.nameFor } : createBaselineProvider();
 const configuredRiskReview = providers ? { provider: providers.review, name: providers.nameFor } : createRiskReviewProvider();
 const configuredMessages = providers ? { provider: providers.message, name: providers.nameFor } : createMessageProvider();
-const app = buildApp({ db, clock: new SystemClock(), baselineProvider: configuredProvider.provider, baselineProviderName: configuredProvider.name, riskReviewProvider: configuredRiskReview.provider, riskReviewProviderName: configuredRiskReview.name, riskObservationSeconds: Number(process.env.RISK_OBSERVATION_SECONDS ?? 30), messageProvider: configuredMessages.provider, messageProviderName: configuredMessages.name, ...(sessions ? { demoSessions: sessions } : {}) });
+const app = buildApp({ db, clock: new SystemClock(), baselineProvider: configuredProvider.provider, baselineProviderName: configuredProvider.name, riskReviewProvider: configuredRiskReview.provider, riskReviewProviderName: configuredRiskReview.name, riskObservationSeconds: Number(process.env.RISK_OBSERVATION_SECONDS ?? 30), messageProvider: configuredMessages.provider, messageProviderName: configuredMessages.name, ...(providers ? { wearerTextProvider: providers.wearerText, wearerTextProviderName: providers.nameFor } : {}), ...(sessions ? { demoSessions: sessions } : {}) });
 serveWeb(app, join(process.cwd(), 'apps', 'web', 'dist'), sessions);
 const interval = setInterval(async () => { await app.inject({ method: 'POST', url: '/api/deadlines/run', headers: sessions ? { 'x-demo-internal': sessions.internalToken } : {} }); }, 1000);
 

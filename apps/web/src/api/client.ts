@@ -26,7 +26,7 @@ export interface Dashboard {
 }
 export interface DemoSession { wearerId: string; publicDemo: boolean; mode: 'fake' | 'deepseek'; deepseekConfigured: boolean; remaining: number }
 export interface DemoInput { heartRate: number; spo2: number; activity: string }
-export interface WearerTextInterpretation { intent: 'unwell' | 'safe' | 'uncertain'; suggestedAction: 'wearer_unwell' | 'wearer_safe' | null; summary: string }
+export interface WearerTextInterpretation { intent: 'unwell' | 'safe' | 'uncertain'; suggestedAction: 'wearer_unwell' | 'wearer_safe' | null; summary: string; provider: 'fake' | 'deepseek' | 'local_fallback' }
 export interface PublicReplay {
   source: { dataset: string; version: string; recordId: string; originalSamplingHz: number; setting: string; license: string; url: string; sha256: string };
   rows: { second: number; heartRate?: number; pulseRate?: number; respiratoryRate?: number; spo2?: number }[];

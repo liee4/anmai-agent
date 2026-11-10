@@ -1,6 +1,7 @@
 import { expect, it, vi } from 'vitest';
 import { DeepSeekMessageProvider } from '../../../src/features/agent/deepseek-message-provider.js';
 import { DeepSeekRiskReviewProvider } from '../../../src/features/monitoring/deepseek-risk-review-provider.js';
+import { DeepSeekWearerTextProvider } from '../../../src/features/emergency/deepseek-wearer-text-provider.js';
 import { fallbackMessages } from '../../../src/features/agent/message-provider.js';
 import { openDatabase } from '../../../src/infra/database.js';
 import { FakeClock } from '../../../src/clock.js';
@@ -37,4 +38,21 @@ it('restricts generated message fields to the current event stage', async () => 
     const invalid = options('{"wearerPrompt":"请确认您现在的状态。","emergencyScript":"拨打急救电话"}');
     await expect(new DeepSeekMessageProvider(invalid).compose({ event, fallback })).rejects.toThrow('Invalid message fields');
   } finally { db.close(); }
+});
+
+it('interprets wearer text with DeepSeek while retaining a local discomfort guard', async () => {
+  const request = { wearerId: 'secret-wearer-id', text: '心脏有点疼', risk: { level: 'abnormal' as const, reasons: ['heart_rate_persistent'], assessedAt: '2026-11-10T10:00:00Z' } };
+  const valid = options('{"intent":"unwell"}');
+  expect(await new DeepSeekWearerTextProvider(valid).interpret(request)).toMatchObject({ intent: 'unwell', suggestedAction: 'wearer_unwell' });
+  const outbound = valid.fetcher.mock.calls[0]![1]?.body as string;
+  expect(outbound).not.toContain('secret-wearer-id');
+  expect(outbound).toContain('心脏有点疼');
+  const unsafe = options('{"intent":"safe"}');
+  expect(await new DeepSeekWearerTextProvider(unsafe).interpret(request)).toMatchObject({ intent: 'unwell', suggestedAction: 'wearer_unwell' });
+  const invalid = options('{"intent":"safe","callRelative":true}');
+  await expect(new DeepSeekWearerTextProvider(invalid).interpret(request)).rejects.toThrow('Invalid wearer text decision');
+  const newPhrase = options('{"intent":"unwell"}');
+  expect(await new DeepSeekWearerTextProvider(newPhrase).interpret({ ...request, text: '胸前像被压着一样' })).toMatchObject({ intent: 'unwell', suggestedAction: 'wearer_unwell' });
+  const unsupportedSafe = options('{"intent":"safe"}');
+  expect(await new DeepSeekWearerTextProvider(unsupportedSafe).interpret({ ...request, text: '没有胸痛' })).toMatchObject({ intent: 'uncertain', suggestedAction: null });
 });

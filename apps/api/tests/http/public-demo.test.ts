@@ -79,7 +79,7 @@ it('keeps the current provider while a model task is in flight', () => {
   } finally { db.close(); }
 });
 
-it('routes all three model tasks through the selected session mode', async () => {
+it('routes all four model tasks through the selected session mode', async () => {
   const db = openDatabase(':memory:');
   try {
     const sessions = new DemoSessions(db, token, true, 5, 10);
@@ -89,6 +89,7 @@ it('routes all three model tasks through the selected session mode', async () =>
       { baselineCandidate: { contexts: { resting: {}, activity: {}, night: {} }, confidence: 'medium', observations: [], evidenceRefs: ['cycle-1'] }, updatedLongTermSummaryCandidate: null },
       { decision: 'observe', reason: '短时观察' },
       { wearerPrompt: '请确认您是否不舒服。' },
+      { intent: 'unwell' },
     ];
     const calls: string[] = [];
     const fetcher = async (_url: string, init: RequestInit) => { calls.push((init.headers as Record<string, string>).Authorization ?? ''); return new Response(JSON.stringify({ choices: [{ message: { content: JSON.stringify(payloads.shift()) } }] }), { status: 200 }); };
@@ -98,8 +99,9 @@ it('routes all three model tasks through the selected session mode', async () =>
     expect((await providers.review.review({ wearerId, risk: { level: 'abnormal', reasons: [], assessedAt: '2026-11-05T00:00:00Z' }, latest: { timestamp: '2026-11-05T00:00:00Z', activity: 'resting', heartRate: 110 }, recent: [], baselineVersion: 1, baseline: {}, knowledge: [] })).decision).toBe('observe');
     const event = { wearerId, state: 'wearer_alert', risk: { level: 'abnormal', reasons: ['heart_rate_persistent'], assessedAt: '2026-11-05T00:00:00Z' }, location: null } as EmergencyEvent;
     expect((await providers.message.compose({ event, fallback: { wearerPrompt: '请确认' } })).wearerPrompt).toContain('不舒服');
-    expect(calls).toEqual(['Bearer private-test-key', 'Bearer private-test-key', 'Bearer private-test-key']);
-    expect(sessions.status(wearerId).remaining).toBe(2);
+    expect((await providers.wearerText.interpret({ wearerId, text: '心脏有点疼', risk: event.risk })).intent).toBe('unwell');
+    expect(calls).toEqual(['Bearer private-test-key', 'Bearer private-test-key', 'Bearer private-test-key', 'Bearer private-test-key']);
+    expect(sessions.status(wearerId).remaining).toBe(1);
   } finally { db.close(); }
 });
 

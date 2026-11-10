@@ -29,11 +29,13 @@ import type { MessageProvider } from './features/agent/message-provider.js';
 import type { DemoSessions } from './features/demo/demo-session.js';
 import { isBidmcRecordId, replayBidmcWindow } from './features/public-data/bidmc-replay.js';
 import { knowledgeCatalog, knowledgeForRisk } from './features/knowledge/evidence-library.js';
-import { interpretWearerText } from './features/emergency/wearer-text.js';
+import { interpretWearerText, validateWearerText } from './features/emergency/wearer-text.js';
+import type { WearerTextProvider } from './features/emergency/wearer-text-provider.js';
+import { FakeWearerTextProvider } from './features/emergency/fake-wearer-text-provider.js';
 
-export interface AppDependencies { db: DatabaseContext; clock: Clock; baselineProvider?: BaselineModelProvider; baselineProviderName?: string | ((wearerId: string) => string); riskReviewProvider?: RiskReviewProvider; riskReviewProviderName?: string | ((wearerId: string) => string); riskObservationSeconds?: number; messageProvider?: MessageProvider; messageProviderName?: string | ((wearerId: string) => string); demoSessions?: DemoSessions }
+export interface AppDependencies { db: DatabaseContext; clock: Clock; baselineProvider?: BaselineModelProvider; baselineProviderName?: string | ((wearerId: string) => string); riskReviewProvider?: RiskReviewProvider; riskReviewProviderName?: string | ((wearerId: string) => string); riskObservationSeconds?: number; messageProvider?: MessageProvider; messageProviderName?: string | ((wearerId: string) => string); wearerTextProvider?: WearerTextProvider; wearerTextProviderName?: string | ((wearerId: string) => string); demoSessions?: DemoSessions }
 
-export function buildApp({ db, clock, baselineProvider = new FakeBaselineProvider(), baselineProviderName = 'fake', riskReviewProvider = new FakeRiskReviewProvider(), riskReviewProviderName = 'fake', riskObservationSeconds = 30, messageProvider = new FakeMessageProvider(), messageProviderName = 'fake', demoSessions }: AppDependencies): FastifyInstance {
+export function buildApp({ db, clock, baselineProvider = new FakeBaselineProvider(), baselineProviderName = 'fake', riskReviewProvider = new FakeRiskReviewProvider(), riskReviewProviderName = 'fake', riskObservationSeconds = 30, messageProvider = new FakeMessageProvider(), messageProviderName = 'fake', wearerTextProvider = new FakeWearerTextProvider(), wearerTextProviderName = 'fake', demoSessions }: AppDependencies): FastifyInstance {
   const app = Fastify({ logger: false, bodyLimit: 10 * 1024 * 1024 });
   const pipeline = new SamplePipeline(db);
   const ingest = new IngestionService(db, pipeline);
@@ -240,10 +242,17 @@ export function buildApp({ db, clock, baselineProvider = new FakeBaselineProvide
     const event = emergency.get(eventId);
     if (!event) return reply.code(404).send({ code: 'EVENT_NOT_FOUND', message: 'Event not found' });
     if (event.state !== 'wearer_alert') return reply.code(409).send({ code: 'RESPONSE_NOT_EXPECTED', message: '佩戴者回应阶段已结束' });
+    let text: string;
     try {
-      return interpretWearerText((request.body as { text?: string } | null)?.text as string);
+      text = validateWearerText((request.body as { text?: string } | null)?.text as string);
     } catch (error) {
       return reply.code(400).send({ code: 'INVALID_WEARER_TEXT', message: error instanceof Error ? error.message : 'Invalid text' });
+    }
+    try {
+      const interpretation = await wearerTextProvider.interpret({ wearerId: event.wearerId, text, risk: event.risk });
+      return { ...interpretation, provider: nameOf(wearerTextProviderName, event.wearerId) };
+    } catch {
+      return { ...interpretWearerText(text), provider: 'local_fallback' };
     }
   });
   app.post('/api/events/:eventId/contacts/:contactId/actions', async (request, reply) => {
