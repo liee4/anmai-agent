@@ -27,6 +27,7 @@ import { MessageService } from './features/agent/message-service.js';
 import { FakeMessageProvider } from './features/agent/fake-message-provider.js';
 import type { MessageProvider } from './features/agent/message-provider.js';
 import type { DemoSessions } from './features/demo/demo-session.js';
+import { replayBidmcWindow } from './features/public-data/bidmc-replay.js';
 
 export interface AppDependencies { db: DatabaseContext; clock: Clock; baselineProvider?: BaselineModelProvider; baselineProviderName?: string | ((wearerId: string) => string); riskReviewProvider?: RiskReviewProvider; riskReviewProviderName?: string | ((wearerId: string) => string); riskObservationSeconds?: number; messageProvider?: MessageProvider; messageProviderName?: string | ((wearerId: string) => string); demoSessions?: DemoSessions }
 
@@ -186,6 +187,18 @@ export function buildApp({ db, clock, baselineProvider = new FakeBaselineProvide
     const result = await evaluate(body.wearerId, samples, 'scenario');
     const latest = samples.at(-1)!;
     return { ...result, demoInput: { heartRate: latest.heartRate, spo2: latest.spo2, activity: latest.activity } };
+  });
+  app.post('/api/public-data/bidmc/01/replay', async (request, reply) => {
+    const body = request.body as { wearerId?: string; startSecond?: number } | null;
+    if (!body?.wearerId || !Number.isInteger(body.startSecond)) return reply.code(400).send({ code: 'INVALID_PUBLIC_REPLAY', message: 'wearerId and integer startSecond are required' });
+    try {
+      const replay = replayBidmcWindow(body.startSecond!, clock.now());
+      const assessed = await evaluate(body.wearerId, replay.samples, 'public_replay');
+      return { ...assessed, source: replay.source, rows: replay.rows, replayedAt: replay.replayedAt };
+    } catch (error) {
+      if (error instanceof Error && error.message === 'Invalid startSecond') return reply.code(400).send({ code: 'INVALID_PUBLIC_REPLAY', message: error.message });
+      throw error;
+    }
   });
   app.get('/api/simulator/history/next', async (request, reply) => {
     const { wearerId } = request.query as { wearerId?: string };

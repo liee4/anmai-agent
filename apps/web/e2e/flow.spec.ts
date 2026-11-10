@@ -9,7 +9,7 @@ async function firstBaseline(page: import('@playwright/test').Page) {
 
 test('guides repeated baseline imports and restarts after reset', async ({ page }) => {
   await expect(page.getByRole('heading', { name: '一次异常体征，系统会怎样响应？' })).toBeVisible();
-  await expect(page.locator('.journey-options button')).toHaveCount(7);
+  await expect(page.locator('.journey-options button')).toHaveCount(8);
   await expect(page.getByRole('button', { name: '导入首轮 14 天', exact: true })).toHaveCount(1);
   await expect(page.locator('.advanced-details')).not.toContainText('导入并检查基线');
   await firstBaseline(page);
@@ -31,6 +31,15 @@ test('guides repeated baseline imports and restarts after reset', async ({ page 
   await expect(page.locator('.baseline-strip-copy>strong')).toHaveText('尚未生成个人基线');
   await firstBaseline(page);
   await expect(page.locator('.cycle-comparison')).toContainText('2026-10-01 — 2026-10-14');
+});
+
+test('replays attributed public measurements without baseline learning', async ({ page }) => {
+  await page.getByRole('button', { name: '回放含缺测片段' }).click();
+  await expect(page.locator('.public-replay-details')).toContainText('血氧缺测 13 秒');
+  await expect(page.locator('.public-replay-details')).toContainText('活动、血压、位置未采集');
+  await expect(page.locator('.guided-main')).toContainText('活动状态未知');
+  await expect(page.locator('.baseline-strip-copy>strong')).toHaveText('尚未生成个人基线');
+  await expect(page.locator('.public-replay-details a')).toHaveAttribute('href', /physionet\.org/);
 });
 
 test('shows model observation, wearer response and relative contact', async ({ page }) => {

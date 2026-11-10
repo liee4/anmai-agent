@@ -1,10 +1,11 @@
 import type { RefObject } from 'react';
-import type { Dashboard, DemoInput } from '../api/client.js';
+import type { Dashboard, DemoInput, PublicReplay } from '../api/client.js';
 import { BaselineStrip } from './BaselineStrip.js';
 import { RiskReviewStatus } from './RiskReviewStatus.js';
 import { RiskEvidenceSummary } from './RiskEvidenceSummary.js';
+import { PublicDataReplayCard } from './PublicDataReplayCard.js';
 
-export type Journey = 'baseline' | 'rest' | 'activity' | 'responsive' | 'noanswer' | 'worsening' | 'device';
+export type Journey = 'baseline' | 'rest' | 'activity' | 'responsive' | 'noanswer' | 'worsening' | 'device' | 'publicdata';
 
 const journeys: { key: Journey; label: string; description: string }[] = [
   { key: 'baseline', label: '个人基线', description: '14 天历史数据形成个性化软阈值，固定安全阈值保持不变。' },
@@ -14,6 +15,7 @@ const journeys: { key: Journey; label: string; description: string }[] = [
   { key: 'noanswer', label: '异常 · 无回应', description: '提醒到期仍无回应：依次联系亲属，无人接管才模拟呼救。' },
   { key: 'worsening', label: '明显恶化', description: '触及固定安全边界：警告佩戴者并立即联系主要亲属，跳过模型等待。' },
   { key: 'device', label: '设备松动', description: '数据不可信：提示检查设备，不启动亲属联系。' },
+  { key: 'publicdata', label: '真实数据回放', description: '回放 PhysioNet 的原始测量值；系统判断和应急流程仍是模拟。' },
 ];
 
 const stateLabels: Record<string, string> = {
@@ -34,6 +36,7 @@ function stageOf(dashboard: Dashboard, selected: Journey): number {
   if (state === 'wearer_alert') return 2;
   if (state && state !== 'safe_recheck' && state !== 'closed') return 3;
   if (dashboard.riskReview && !['closed', 'cancelled'].includes(dashboard.riskReview.status)) return 2;
+  if (selected === 'publicdata') return 1;
   if (!dashboard.baseline && selected === 'baseline') return 0;
   return 1;
 }
@@ -47,6 +50,7 @@ function flowState(index: number, stage: number, hasBaseline: boolean, severe: b
 }
 
 function scenarioPreset(key: Journey, input: DemoInput | null): string | null {
+  if (key === 'publicdata') return 'PhysioNet BIDMC bidmc_01：真实床旁监护数值，活动与血压未采集';
   if (input && key !== 'baseline') return `本次模拟输入：心率 ${input.heartRate} 次/分 · 血氧 ${input.spo2}%${input.activity === 'activity' ? ' · 活动标记' : ''}`;
   if (key === 'rest') return '演示预设：静息体征按当前基线生成';
   if (key === 'activity') return '演示预设：活动体征按当前基线生成';
@@ -74,10 +78,11 @@ function statusText(dashboard: Dashboard, selected: Journey, result: string): st
   return dashboard.baseline ? '个人基线已建立，选择患者情景或输入一段实时体征。' : '先导入 14 天模拟历史数据，建立个人基线。';
 }
 
-export function GuidedDemo({ dashboard, selected, demoInput, result, busy, wearerId, rawInput, inputRef, onRawInputChange, onFillNext, onImportRaw, onSelect, onImportNext, onReset, onResume, onAction, onHelp }: {
+export function GuidedDemo({ dashboard, selected, demoInput, publicReplay, result, busy, wearerId, rawInput, inputRef, onRawInputChange, onFillNext, onImportRaw, onSelect, onPublicReplay, onImportNext, onReset, onResume, onAction, onHelp }: {
   dashboard: Dashboard;
   selected: Journey;
   demoInput: DemoInput | null;
+  publicReplay: PublicReplay | null;
   result: string;
   busy: boolean;
   wearerId: string;
@@ -87,6 +92,7 @@ export function GuidedDemo({ dashboard, selected, demoInput, result, busy, weare
   onFillNext: () => void;
   onImportRaw: () => void;
   onSelect: (journey: Journey) => void;
+  onPublicReplay: (startSecond: number) => void;
   onImportNext: () => void;
   onReset: () => void;
   onResume: () => void;
@@ -110,7 +116,7 @@ export function GuidedDemo({ dashboard, selected, demoInput, result, busy, weare
   const blocked = Boolean(event);
   const modelStep = risk?.level === 'worsening' ? '明显恶化：按安全规则跳过模型等待' : risk?.level === 'untrusted_data' && activeReview ? '此前异常已由模型复核；当前设备数据不可信' : risk?.level === 'normal' || risk?.level === 'untrusted_data' ? '规则未确认普通异常，无需模型复核' : `普通异常：${dashboard.riskReviewProvider} 复核并说明理由`;
   const logic = [
-    ['接收体征', '模拟穿戴设备持续传入心率与血氧'],
+    ['接收体征', selected === 'publicdata' ? '回放有来源的真实监护数值' : '模拟穿戴设备持续传入心率与血氧'],
     ['规则判断', '检查数据质量、持续时间与阈值'],
     ['模型复核', modelStep],
     ['询问佩戴者', selected === 'noanswer' ? '提醒到期仍无回应，随后联系亲属' : '不舒服可立即进入亲属联系'],
@@ -130,6 +136,8 @@ export function GuidedDemo({ dashboard, selected, demoInput, result, busy, weare
     </section>
 
     <BaselineStrip dashboard={dashboard} busy={busy} wearerId={wearerId} rawInput={rawInput} inputRef={inputRef} onRawInputChange={onRawInputChange} onFillNext={onFillNext} onImportRaw={onImportRaw} onImportNext={onImportNext} onReset={onReset} onResume={onResume} />
+
+    <PublicDataReplayCard replay={publicReplay} busy={busy} blocked={blocked} onReplay={onPublicReplay} />
 
     <div className="demo-flow" aria-label="演示进度">{flowNames.map((name, index) => { const state = flowState(index, stage, Boolean(dashboard.baseline), risk?.level === 'worsening'); return <div key={name} className={state.className}><small>{state.label}</small><strong>{name}</strong></div>; })}</div>
 

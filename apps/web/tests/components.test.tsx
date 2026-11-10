@@ -4,6 +4,7 @@ import type { EmergencyEvent } from '@anmai/contracts';
 import { EmergencyCard } from '../src/app/EmergencyCard.js';
 import { RiskReviewStatus } from '../src/app/RiskReviewStatus.js';
 import { RiskEvidenceSummary } from '../src/app/RiskEvidenceSummary.js';
+import { PublicDataReplayCard } from '../src/app/PublicDataReplayCard.js';
 
 const event: EmergencyEvent = { eventId: 'demo-event-123', wearerId: 'demo-wearer', state: 'primary_contact', stateVersion: 2, createdAt: '2026-11-04T00:00:00Z', deadlineAt: '2026-11-04T00:00:30Z', timerSettings: { wearerResponseSeconds: 60, primaryRelativeSeconds: 30, otherRelativesSeconds: 30, safeRecheckSeconds: 300 }, baselineVersion: 1, location: null, risk: { level: 'worsening', score: 10, reasons: ['fixed_heart_rate_high'], assessedAt: '2026-11-04T00:00:00Z' } };
 
@@ -32,4 +33,14 @@ it('shows card facts and marks unavailable medical details as unregistered', () 
   expect(html).toContain('表示不舒服');
   expect(html).toContain('主要亲属');
   expect(html).not.toContain('模拟自动呼救播报');
+});
+
+it('attributes a real recording and separates recorded values from simulated decisions', () => {
+  const html = renderToStaticMarkup(<PublicDataReplayCard replay={{ source: { dataset: 'BIDMC PPG and Respiration Dataset', version: '1.0.0', recordId: 'bidmc_01', originalSamplingHz: 1, setting: 'hospital bedside monitor', license: 'Open Data Commons Attribution License v1.0', url: 'https://physionet.org/content/bidmc/1.0.0/', sha256: 'abc' }, rows: [{ second: 111, heartRate: 92, respiratoryRate: 23 }, { second: 112, heartRate: 92, respiratoryRate: 23 }], replayedAt: '2026-11-10T10:00:00Z' }} busy={false} blocked={false} onReplay={() => undefined} />);
+  expect(html).toContain('BIDMC');
+  expect(html).toContain('bidmc_01');
+  expect(html).toContain('原始测量');
+  expect(html).toContain('模拟判断');
+  expect(html).toContain('血氧缺测 2 秒');
+  expect(html).not.toContain('血压 120');
 });

@@ -2,7 +2,7 @@ node_modules/
 dist/
 .env
 data/*.sqlite*
-apps/api/data/
+apps/api/data/*.sqlite*
 .taste-skill/
 .superpowers/
 coverage/

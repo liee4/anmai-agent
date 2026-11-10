@@ -9,7 +9,7 @@ import { median } from '../monitoring/sliding-window.js';
 import { buildDailySummary } from './daily-summary-builder.js';
 import type { NormalizedSample } from './normalizer.js';
 
-export type SampleSource = 'daily' | 'history' | 'live' | 'scenario';
+export type SampleSource = 'daily' | 'history' | 'live' | 'scenario' | 'public_replay';
 
 export class SamplePipeline {
   private readonly exclusions: BaselineExclusionRepository;

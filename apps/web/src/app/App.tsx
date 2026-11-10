@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { api, type Dashboard, type DemoInput } from '../api/client.js';
+import { api, type Dashboard, type DemoInput, type PublicReplay } from '../api/client.js';
 import { EventTimeline } from './EventTimeline.js';
 import { EmergencyCard } from './EmergencyCard.js';
 import { GuidedDemo, type Journey } from './GuidedDemo.js';
@@ -7,9 +7,9 @@ import { ProviderModePanel } from './ProviderModePanel.js';
 import { TimerPanel } from './TimerPanel.js';
 
 const scenarioFor: Partial<Record<Journey, string>> = { rest: 'normal', activity: 'activity', responsive: 'abnormal', noanswer: 'abnormal', worsening: 'worsening', device: 'loose_device' };
-const labelFor: Record<Journey, string> = { baseline: '个人基线', rest: '正常静息', activity: '正常活动', responsive: '异常 · 有回应', noanswer: '异常 · 无回应', worsening: '明显恶化', device: '设备松动' };
+const labelFor: Record<Journey, string> = { baseline: '个人基线', rest: '正常静息', activity: '正常活动', responsive: '异常 · 有回应', noanswer: '异常 · 无回应', worsening: '明显恶化', device: '设备松动', publicdata: '真实数据回放' };
 const riskLabel: Record<string, string> = { normal: '体征平稳', abnormal: '持续异常', worsening: '明显恶化', untrusted_data: '数据不可信', mild: '轻度偏离' };
-const journeyKeys: Journey[] = ['baseline', 'rest', 'activity', 'responsive', 'noanswer', 'worsening', 'device'];
+const journeyKeys: Journey[] = ['baseline', 'rest', 'activity', 'responsive', 'noanswer', 'worsening', 'device', 'publicdata'];
 
 function speakSimulation(script: string): void {
   if (!('speechSynthesis' in window)) return;
@@ -26,6 +26,7 @@ export function App() {
   const [dashboard, setDashboard] = useState<Dashboard | null>(null);
   const [selected, setSelected] = useState<Journey>('baseline');
   const [lastInput, setLastInput] = useState<DemoInput | null>(null);
+  const [publicReplay, setPublicReplay] = useState<PublicReplay | null>(null);
   const [input, setInput] = useState('');
   const [result, setResult] = useState('');
   const [error, setError] = useState('');
@@ -43,8 +44,8 @@ export function App() {
   useEffect(() => {
     if (!wearerId) return;
     try {
-      const stored = JSON.parse(sessionStorage.getItem(`anmai-journey:${wearerId}`) ?? 'null') as { journey?: Journey; input?: DemoInput } | null;
-      if (stored?.journey && journeyKeys.includes(stored.journey)) { setSelected(stored.journey); setLastInput(stored.input ?? null); }
+      const stored = JSON.parse(sessionStorage.getItem(`anmai-journey:${wearerId}`) ?? 'null') as { journey?: Journey; input?: DemoInput; publicReplay?: PublicReplay } | null;
+      if (stored?.journey && journeyKeys.includes(stored.journey)) { setSelected(stored.journey); setLastInput(stored.input ?? null); setPublicReplay(stored.publicReplay ?? null); }
     } catch { /* Storage may be unavailable; the backend state remains authoritative. */ }
   }, [wearerId]);
   const refresh = useCallback(async () => { if (!wearerId) return; try { setDashboard(await api.dashboard(wearerId)); } catch (failure) { setError(String(failure)); } }, [wearerId]);
@@ -69,6 +70,7 @@ export function App() {
       const response = await api.ingest(JSON.parse(input));
       setInput(''); setInputViewRevision(value => value + 1);
       setSelected('baseline'); setLastInput(null);
+      setPublicReplay(null);
       try { sessionStorage.setItem(`anmai-journey:${wearerId}`, JSON.stringify({ journey: 'baseline' })); } catch { /* Optional browser state. */ }
       setResult(`导入覆盖 ${response.coveredDays} 天 · 有效 ${response.successfulDays} 天 · 完整周期 ${response.completedCycles} 个 · 当前基线 ${response.baselineVersion ? `v${response.baselineVersion}` : '尚无'}`);
     });
@@ -82,6 +84,7 @@ export function App() {
       const response = await api.ingest(next);
       setInput(''); setInputViewRevision(value => value + 1);
       setSelected('baseline'); setLastInput(null);
+      setPublicReplay(null);
       try { sessionStorage.setItem(`anmai-journey:${wearerId}`, JSON.stringify({ journey: 'baseline' })); } catch { /* Optional browser state. */ }
       setResult(`${start} — ${end} 的模拟数据已导入；有效 ${response.successfulDays} 天，当前基线 ${response.baselineVersion ? `v${response.baselineVersion}` : '尚无'}${response.modelCalls === 0 ? '；本轮未调用基线模型' : `；模型调用 ${response.modelCalls} 次`}`);
     });
@@ -102,21 +105,38 @@ export function App() {
       setInput(''); setInputViewRevision(value => value + 1);
       setSelected('baseline');
       setLastInput(null);
+      setPublicReplay(null);
       try { sessionStorage.removeItem(`anmai-journey:${wearerId}`); } catch { /* Optional browser state. */ }
       setResult('演示数据已重置；下一次从 2026-10-01 开始导入首轮 14 天。');
     });
   }
 
   function chooseJourney(journey: Journey) {
+    if (journey === 'publicdata') { replayPublicData(0); return; }
     const scenario = scenarioFor[journey];
-    if (!scenario) { setSelected(journey); setLastInput(null); setResult(''); try { sessionStorage.setItem(`anmai-journey:${wearerId}`, JSON.stringify({ journey })); } catch { /* Optional browser state. */ } return; }
+    if (!scenario) { setSelected(journey); setLastInput(null); setPublicReplay(null); setResult(''); try { sessionStorage.setItem(`anmai-journey:${wearerId}`, JSON.stringify({ journey })); } catch { /* Optional browser state. */ } return; }
     setResult('');
     void run(async () => {
       const response = await api.scenario(wearerId, scenario);
       setSelected(journey);
       setLastInput(response.demoInput);
+      setPublicReplay(null);
       try { sessionStorage.setItem(`anmai-journey:${wearerId}`, JSON.stringify({ journey, input: response.demoInput })); } catch { /* Optional browser state. */ }
       setResult(`${labelFor[journey]}：规则判断为${riskLabel[response.risk.level] ?? response.risk.level}。`);
+    });
+  }
+
+  function replayPublicData(startSecond: number) {
+    setResult('');
+    void run(async () => {
+      const response = await api.publicReplay(wearerId, startSecond);
+      setSelected('publicdata');
+      setPublicReplay(response);
+      const last = response.rows.at(-1);
+      setLastInput(last?.heartRate !== undefined && last.spo2 !== undefined ? { heartRate: last.heartRate, spo2: last.spo2, activity: 'unknown' } : null);
+      try { sessionStorage.setItem(`anmai-journey:${wearerId}`, JSON.stringify({ journey: 'publicdata', publicReplay: response })); } catch { /* Optional browser state. */ }
+      const conclusion = response.risk.reasons.includes('activity_unknown') ? '活动状态未知，未使用个人基线软阈值' : riskLabel[response.risk.level] ?? response.risk.level;
+      setResult(`已回放 BIDMC ${response.source.recordId} 原始 ${response.rows[0]?.second}–${last?.second} 秒数值；规则结果：${conclusion}。活动和血压未采集，应急动作仅供模拟。`);
     });
   }
 
@@ -147,15 +167,15 @@ export function App() {
   return <div className="demo-shell">
     <header className="demo-header"><div className="demo-brand"><span className="brand-mark" aria-hidden="true">安</span><strong>安脉</strong></div><div className="header-right"><span>高风险老人 · 模拟佩戴者</span>{publicDemo && <ProviderModePanel onChange={() => void refresh()} />}</div></header>
     <main className="demo-content">
-      <div className="demo-title"><div><h1>一次异常体征，系统会怎样响应？</h1><p>跟随这条流程，看到从个人基线、风险判断到亲属接管的每一步。</p></div><span>模拟数据 · 不拨打真实电话</span></div>
+      <div className="demo-title"><div><h1>一次异常体征，系统会怎样响应？</h1><p>跟随这条流程，看到从个人基线、风险判断到亲属接管的每一步。</p></div><span>模拟流程 · 可回放真实公开记录 · 不拨打真实电话</span></div>
       {error && <div className="notice error" role="alert">{error}</div>}
-      <GuidedDemo dashboard={dashboard} selected={selected} demoInput={lastInput} result={result} busy={busy} wearerId={wearerId} rawInput={input} inputRef={inputRef} onRawInputChange={setInput} onFillNext={() => void fillNextDemoHistory()} onImportRaw={() => void importData()} onSelect={chooseJourney} onImportNext={() => void importNextDemoHistory()} onReset={() => void resetDemo()} onResume={() => void run(() => api.resume(wearerId))} onAction={act} onHelp={() => void run(() => api.help(wearerId))} />
+      <GuidedDemo dashboard={dashboard} selected={selected} demoInput={lastInput} publicReplay={publicReplay} result={result} busy={busy} wearerId={wearerId} rawInput={input} inputRef={inputRef} onRawInputChange={setInput} onFillNext={() => void fillNextDemoHistory()} onImportRaw={() => void importData()} onSelect={chooseJourney} onPublicReplay={replayPublicData} onImportNext={() => void importNextDemoHistory()} onReset={() => void resetDemo()} onResume={() => void run(() => api.resume(wearerId))} onAction={act} onHelp={() => void run(() => api.help(wearerId))} />
       <details className="advanced-details" id="details"><summary>判断依据、原始记录与演示设置</summary><div className="advanced-grid">
         <section className="advanced-panel"><TimerPanel />{dashboard.baseline && <><h2>当前基线详情</h2>{dashboard.baseline.baseline.observations?.map(item => <p className="observation" key={item.context}>{item.context === 'resting' ? '静息' : item.context === 'activity' ? '活动' : '夜间'} · 心率中位数 {item.heartRate?.median ?? '—'} 次/分 · 血氧中位数 {item.spo2?.median ?? '—'}%</p>)}</>}</section>
         {event && <section className="advanced-panel advanced-wide"><EmergencyCard event={event} card={dashboard.eventCard} contacts={dashboard.contactDeliveries} messages={dashboard.messages} /><EventTimeline eventId={event.eventId} stateVersion={event.stateVersion} />{wearerPrompt && <button onClick={() => speakSimulation(wearerPrompt)}>重播佩戴者警告</button>}{emergencyScript && <button onClick={() => speakSimulation(emergencyScript)}>重播模拟语音</button>}</section>}
       </div></details>
       {result && <p className="demo-result" role="status">{result}</p>}
-      <footer>安脉 Agent 原型 · 所有体征、联系人与呼救行为均为模拟</footer>
+      <footer>安脉 Agent 原型 · 患者情景为模拟；BIDMC 回放保留原始测量值与来源；联系人及呼救行为均为模拟</footer>
     </main>
   </div>;
 }
